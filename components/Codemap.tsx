@@ -548,7 +548,7 @@ export const Codemap: React.FC<CodemapProps> = ({
   ];
 
   return (
-    <div className="space-y-8 max-w-[1440px] mx-auto animate-in fade-in duration-500 pb-16">
+    <div className="w-full max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-500 pb-16">
       {/* Top Search & Mission Control Bar */}
       <div className="glass-panel p-4 md:p-6 rounded-3xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 border border-white/10 shadow-xl">
         <div className="flex items-center gap-3">

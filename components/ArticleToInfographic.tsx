@@ -134,7 +134,7 @@ const ArticleToInfographic: React.FC<ArticleToInfographicProps> = ({ history, on
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 mb-20">
+    <div className="w-full max-w-[1600px] mx-auto space-y-8 pb-16 animate-in fade-in duration-500">
       
       {fullScreenImage && (
           <ImageViewer 

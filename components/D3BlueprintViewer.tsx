@@ -153,18 +153,24 @@ export const D3BlueprintViewer = forwardRef<D3BlueprintViewerRef, D3BlueprintVie
     const svg = d3.select(svgRef.current);
     const g = svg.select<SVGGElement>('g.blueprint-content-layer');
 
-    // Create D3 Zoom Behavior with smooth wheel delta
+    // Create D3 Zoom Behavior with smooth wheel delta and RAF-throttled React state updates
+    let rafId: number | null = null;
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.15, 8]) // Deep zoom range for technical architectural blueprints
       .wheelDelta(createSmoothWheelDelta())
       .on('zoom', (event) => {
         g.attr('transform', event.transform);
-        setZoomPercent(Math.round(event.transform.k * 100));
-        setCurrentTransform({
-          x: event.transform.x,
-          y: event.transform.y,
-          k: event.transform.k,
-        });
+        if (!rafId) {
+          rafId = requestAnimationFrame(() => {
+            rafId = null;
+            setZoomPercent(Math.round(event.transform.k * 100));
+            setCurrentTransform({
+              x: event.transform.x,
+              y: event.transform.y,
+              k: event.transform.k,
+            });
+          });
+        }
       });
 
     svg.call(zoom);

@@ -289,3 +289,27 @@ body:not([data-theme]) {
 .animate-blueprint-pulse {
   animation: blueprint-pulse 2.5s infinite ease-in-out;
 }
+
+/* ==========================================================================
+   FPS PERFORMANCE & GPU HARDWARE ACCELERATION
+   ========================================================================== */
+.gpu-accelerated,
+.zoom-container,
+.blueprint-content-layer,
+.glass-panel {
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+svg {
+  shape-rendering: geometricPrecision;
+  text-rendering: optimizeLegibility;
+}
+
+svg .nodes,
+svg .links,
+svg .zoom-container {
+  will-change: transform;
+}
+

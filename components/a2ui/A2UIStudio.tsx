@@ -175,7 +175,7 @@ export const A2UIStudio: React.FC<A2UIStudioProps> = ({
   ];
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div className="w-full space-y-8 pb-16 animate-in fade-in duration-500">
       {/* Header & Protocol Title */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/20 shadow-xl">
         <div className="space-y-1">

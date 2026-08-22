@@ -336,7 +336,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialRepoContext, on
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)] min-h-[640px] max-w-[1400px] mx-auto animate-in fade-in duration-500">
+    <div className="w-full max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-6 min-h-[640px] animate-in fade-in duration-500 pb-16">
       {/* Left Sidebar: Roles, Models & Context Config */}
       <div className="w-full lg:w-[320px] flex flex-col gap-4 shrink-0">
         

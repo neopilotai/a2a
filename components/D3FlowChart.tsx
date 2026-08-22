@@ -1951,17 +1951,23 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
 
     nodeGroup.call(drag as any);
 
-    // Smooth D3 Zoom & Pan Behavior
+    // Smooth D3 Zoom & Pan Behavior with RAF throttling
+    let zoomRafId: number | null = null;
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.05, 8]) // Generous zoom range for vast architecture maps
       .wheelDelta(createSmoothWheelDelta())
       .on("zoom", (event) => {
         g.attr("transform", event.transform);
-        setCurrentTransform({
-          x: event.transform.x,
-          y: event.transform.y,
-          k: event.transform.k,
-        });
+        if (!zoomRafId) {
+          zoomRafId = requestAnimationFrame(() => {
+            zoomRafId = null;
+            setCurrentTransform({
+              x: event.transform.x,
+              y: event.transform.y,
+              k: event.transform.k,
+            });
+          });
+        }
       });
 
     svg.call(zoom);
