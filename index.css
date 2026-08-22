@@ -1,0 +1,291 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* ==========================================================================
+   LINK2INK STUDIO MULTI-THEME ENGINE
+   Themes: 'architect' (Dark Cyber), 'blueprint' (CAD Navy/Cyan), 'draft' (Minimalist Charcoal)
+   ========================================================================== */
+
+:root {
+  --theme-transition: background-color 0.25s ease, border-color 0.25s ease, color 0.2s ease, box-shadow 0.25s ease;
+  color-scheme: dark;
+}
+
+/* Base smooth transition for theme switches */
+body, 
+header, 
+nav, 
+.glass-panel, 
+button, 
+input, 
+textarea, 
+select {
+  transition: var(--theme-transition);
+}
+
+/* ==========================================================================
+   1. THEME: ARCHITECT (Cybernetic Deep Slate / Violet / Emerald)
+   ========================================================================== */
+[data-theme="architect"],
+:root:not([data-theme]) {
+  --bg-main: #020617;
+  --bg-surface: rgba(15, 23, 42, 0.65);
+  --bg-surface-elevated: rgba(30, 41, 59, 0.8);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(139, 92, 246, 0.5);
+  --accent-primary: #8b5cf6;
+  --accent-secondary: #06b6d4;
+  --accent-tertiary: #10b981;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --selection-bg: rgba(139, 92, 246, 0.35);
+  --scrollbar-track: rgba(2, 6, 23, 0.5);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="architect"] body,
+body:not([data-theme]) {
+  background-color: #020617;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(124, 58, 237, 0.15) 0px, transparent 50%), 
+    radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.15) 0px, transparent 50%),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+  background-attachment: fixed;
+  color: #e2e8f0;
+}
+
+/* ==========================================================================
+   2. THEME: BLUEPRINT (Classic CAD Cyanotype / Navy / High-Contrast Cyan & White)
+   ========================================================================== */
+[data-theme="blueprint"] {
+  --bg-main: #03132e;
+  --bg-surface: rgba(6, 27, 65, 0.88);
+  --bg-surface-elevated: rgba(10, 39, 88, 0.95);
+  --border-subtle: rgba(56, 189, 248, 0.3);
+  --border-active: #38bdf8;
+  --accent-primary: #00f0ff;
+  --accent-secondary: #38bdf8;
+  --accent-tertiary: #60a5fa;
+  --text-main: #ffffff;
+  --text-muted: #bae6fd;
+  --text-dim: #7dd3fc;
+  --selection-bg: rgba(0, 240, 255, 0.4);
+  --scrollbar-track: rgba(3, 19, 46, 0.9);
+  --scrollbar-thumb: rgba(56, 189, 248, 0.5);
+}
+
+[data-theme="blueprint"] body {
+  background-color: #03132e !important;
+  background-image: 
+    radial-gradient(at 50% 0%, rgba(0, 240, 255, 0.12) 0px, transparent 65%),
+    radial-gradient(at 100% 100%, rgba(37, 99, 235, 0.15) 0px, transparent 50%),
+    linear-gradient(rgba(56, 189, 248, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.12) 1px, transparent 1px),
+    linear-gradient(rgba(56, 189, 248, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.04) 1px, transparent 1px) !important;
+  background-size: 100% 100%, 100% 100%, 50px 50px, 50px 50px, 10px 10px, 10px 10px !important;
+  background-attachment: fixed !important;
+  color: #f0f9ff !important;
+}
+
+[data-theme="blueprint"] header {
+  background-color: rgba(3, 19, 46, 0.92) !important;
+  border-bottom-color: rgba(56, 189, 248, 0.35) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 10, 30, 0.7), inset 0 -1px 0 0 rgba(56, 189, 248, 0.2) !important;
+}
+
+[data-theme="blueprint"] .glass-panel {
+  background: rgba(6, 27, 65, 0.88) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  box-shadow: 
+    inset 0 1px 2px 0 rgba(56, 189, 248, 0.3),
+    0 20px 40px -10px rgba(0, 10, 35, 0.8) !important;
+}
+
+[data-theme="blueprint"] .bg-slate-950 {
+  background-color: #03132e !important;
+}
+
+[data-theme="blueprint"] .bg-slate-900 {
+  background-color: #061c40 !important;
+}
+
+[data-theme="blueprint"] .bg-slate-900\/80,
+[data-theme="blueprint"] .bg-slate-950\/80 {
+  background-color: rgba(6, 28, 64, 0.9) !important;
+}
+
+[data-theme="blueprint"] .border-white\/10 {
+  border-color: rgba(56, 189, 248, 0.28) !important;
+}
+
+[data-theme="blueprint"] .border-white\/5 {
+  border-color: rgba(56, 189, 248, 0.16) !important;
+}
+
+[data-theme="blueprint"] .text-slate-400 {
+  color: #7dd3fc !important;
+}
+
+[data-theme="blueprint"] .text-slate-300 {
+  color: #bae6fd !important;
+}
+
+[data-theme="blueprint"] .text-slate-200,
+[data-theme="blueprint"] .text-slate-100 {
+  color: #ffffff !important;
+}
+
+/* ==========================================================================
+   3. THEME: DRAFT (Minimalist Monochrome Grayscale / Charcoal Drafting Desk)
+   ========================================================================== */
+[data-theme="draft"] {
+  --bg-main: #09090b;
+  --bg-surface: rgba(24, 24, 27, 0.85);
+  --bg-surface-elevated: rgba(39, 39, 42, 0.95);
+  --border-subtle: rgba(255, 255, 255, 0.14);
+  --border-active: #ffffff;
+  --accent-primary: #ffffff;
+  --accent-secondary: #e4e4e7;
+  --accent-tertiary: #a1a1aa;
+  --text-main: #ffffff;
+  --text-muted: #d4d4d8;
+  --text-dim: #a1a1aa;
+  --selection-bg: rgba(255, 255, 255, 0.25);
+  --scrollbar-track: rgba(9, 9, 11, 0.8);
+  --scrollbar-thumb: rgba(161, 161, 170, 0.4);
+}
+
+[data-theme="draft"] body {
+  background-color: #09090b !important;
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.05) 0%, transparent 60%),
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px) !important;
+  background-size: 100% 100%, 32px 32px, 32px 32px !important;
+  background-attachment: fixed !important;
+  color: #f4f4f5 !important;
+}
+
+[data-theme="draft"] header {
+  background-color: rgba(9, 9, 11, 0.94) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.8) !important;
+}
+
+[data-theme="draft"] .glass-panel {
+  background: rgba(24, 24, 27, 0.88) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.12),
+    0 16px 32px -8px rgba(0, 0, 0, 0.7) !important;
+}
+
+[data-theme="draft"] .bg-slate-950 {
+  background-color: #09090b !important;
+}
+
+[data-theme="draft"] .bg-slate-900 {
+  background-color: #18181b !important;
+}
+
+[data-theme="draft"] .bg-slate-900\/80,
+[data-theme="draft"] .bg-slate-950\/80 {
+  background-color: rgba(18, 18, 20, 0.92) !important;
+}
+
+[data-theme="draft"] .border-white\/10 {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+[data-theme="draft"] .border-white\/5 {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="draft"] .text-slate-400 {
+  color: #a1a1aa !important;
+}
+
+[data-theme="draft"] .text-slate-300 {
+  color: #d4d4d8 !important;
+}
+
+[data-theme="draft"] .text-slate-200,
+[data-theme="draft"] .text-slate-100 {
+  color: #ffffff !important;
+}
+
+/* ==========================================================================
+   SCROLLBAR STYLES (THEME-ADAPTIVE)
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+[data-theme="architect"] ::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: rgba(2, 6, 23, 0.6);
+}
+
+[data-theme="architect"] ::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+[data-theme="architect"] ::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.5);
+}
+
+[data-theme="blueprint"] ::-webkit-scrollbar-track {
+  background: #03132e !important;
+}
+
+[data-theme="blueprint"] ::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.45) !important;
+  border-radius: 3px !important;
+}
+
+[data-theme="blueprint"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.8) !important;
+}
+
+[data-theme="draft"] ::-webkit-scrollbar-track {
+  background: #09090b !important;
+}
+
+[data-theme="draft"] ::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.35) !important;
+  border-radius: 3px !important;
+}
+
+[data-theme="draft"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(244, 244, 245, 0.7) !important;
+}
+
+/* ==========================================================================
+   ANIMATIONS & PULSES
+   ========================================================================== */
+@keyframes blueprint-pulse {
+  0%, 100% {
+    box-shadow: 0 0 15px -3px rgba(0, 240, 255, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 25px 2px rgba(0, 240, 255, 0.7);
+  }
+}
+
+.animate-blueprint-pulse {
+  animation: blueprint-pulse 2.5s infinite ease-in-out;
+}
