@@ -12,6 +12,7 @@ import { D3SnapshotModal } from './D3SnapshotModal';
 import { DiagramZoomToolbar } from './DiagramZoomToolbar';
 import { GraphMinimap } from './GraphMinimap';
 import { calculateFileImpact } from '../services/fileImpactService';
+import { D3ForceWorkerManager } from '../services/d3ForceWorkerManager';
 import { 
   computeHierarchicalLayout, 
   computeModuleClusterCenters,
@@ -115,6 +116,7 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
+  const workerManagerRef = useRef<D3ForceWorkerManager | null>(null);
   const activeWorkerRef = useRef<Worker | null>(null);
   const zoomContainerRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null);
   const nodesRef = useRef<D3Node[]>([]);
@@ -1605,222 +1607,79 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
     simulation.stop(); // Stop main thread simulation; worker computes the heavy layout!
     simulationRef.current = simulation;
 
-    // Asynchronous Web Worker layout computation
-    if (layoutAlgorithm !== 'hierarchical') {
-      const workerBlob = new Blob([`
-        self.onmessage = function(e) {
-          const { nodes, links, width, height, layoutAlgorithm, iterations = 150, clusterCenters } = e.data;
-          let useD3 = false;
-          try {
-            importScripts('https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js');
-            if (typeof d3 !== 'undefined') {
-              useD3 = true;
-            }
-          } catch (err) {}
-
-          if (useD3) {
-            try {
-              const simLinks = links.map(l => ({
-                source: typeof l.source === 'object' ? l.source.id : l.source,
-                target: typeof l.target === 'object' ? l.target.id : l.target,
-                value: l.value
-              }));
-
-              const simulation = d3.forceSimulation(nodes);
-              if (layoutAlgorithm === 'modular-force' && clusterCenters) {
-                const centerMap = new Map(Object.entries(clusterCenters));
-                simulation
-                  .force("clusterX", d3.forceX(d => {
-                    const center = centerMap.get(d.moduleId || 'mod-core');
-                    return center ? center.x : (width / 2);
-                  }).strength(0.24))
-                  .force("clusterY", d3.forceY(d => {
-                    const center = centerMap.get(d.moduleId || 'mod-core');
-                    return center ? center.y : (height / 2);
-                  }).strength(0.24))
-                  .force("link", d3.forceLink(simLinks).id(d => d.id).distance(l => {
-                    const srcMod = l.source.moduleId;
-                    const tgtMod = l.target.moduleId;
-                    return (srcMod && tgtMod && srcMod === tgtMod) ? 50 : 135;
-                  }).strength(0.65))
-                  .force("charge", d3.forceManyBody().strength(-260))
-                  .force("center", d3.forceCenter(width / 2, height / 2))
-                  .force("collision", d3.forceCollide().radius(30));
-              } else {
-                simulation
-                  .force("link", d3.forceLink(simLinks).id(d => d.id).distance(90))
-                  .force("charge", d3.forceManyBody().strength(-360))
-                  .force("center", d3.forceCenter(width / 2, height / 2))
-                  .force("collision", d3.forceCollide().radius(28))
-                  .force("x", d3.forceX(width / 2).strength(0.06))
-                  .force("y", d3.forceY(height / 2).strength(0.06));
-              }
-              simulation.stop();
-              for (let i = 0; i < iterations; i++) {
-                simulation.tick();
-                if (i % 12 === 0 || i === iterations - 1) {
-                  self.postMessage({
-                    type: 'tick',
-                    nodes: nodes.map(n => ({ id: n.id, x: n.x, y: n.y, vx: n.vx, vy: n.vy, fx: n.fx, fy: n.fy })),
-                    progress: (i + 1) / iterations
-                  });
-                }
-              }
-              self.postMessage({ type: 'end', nodes });
-              return;
-            } catch (err) {}
-          }
-
-          // Fallback Custom physics engine inside Worker (Offline-first / fail-safe)
-          const nodeMap = new Map();
-          nodes.forEach(n => {
-            n.x = n.x !== undefined ? n.x : (width / 2) + (Math.random() - 0.5) * 50;
-            n.y = n.y !== undefined ? n.y : (height / 2) + (Math.random() - 0.5) * 50;
-            n.vx = n.vx || 0;
-            n.vy = n.vy || 0;
-            nodeMap.set(n.id, n);
-          });
-
-          const resolvedLinks = links.map(l => {
-            const sId = typeof l.source === 'object' ? l.source.id : l.source;
-            const tId = typeof l.target === 'object' ? l.target.id : l.target;
-            return { source: nodeMap.get(sId), target: nodeMap.get(tId) };
-          }).filter(l => l.source && l.target);
-
-          const centerMap = clusterCenters ? new Map(Object.entries(clusterCenters)) : null;
-
-          for (let step = 0; step < iterations; step++) {
-            nodes.forEach(n => {
-              if (n.fx !== undefined && n.fx !== null) {
-                n.x = n.fx; n.y = n.fy; n.vx = 0; n.vy = 0; return;
-              }
-              if (layoutAlgorithm === 'modular-force' && centerMap) {
-                const center = centerMap.get(n.moduleId || 'mod-core') || { x: width / 2, y: height / 2 };
-                n.vx += (center.x - n.x) * 0.024;
-                n.vy += (center.y - n.y) * 0.024;
-              } else {
-                n.vx += (width / 2 - n.x) * 0.01;
-                n.vy += (height / 2 - n.y) * 0.01;
-              }
-            });
-
-            for (let i = 0; i < nodes.length; i++) {
-              const u = nodes[i];
-              for (let j = i + 1; j < nodes.length; j++) {
-                const v = nodes[j];
-                const dx = v.x - u.x;
-                const dy = v.y - u.y;
-                const distSq = dx * dx + dy * dy + 1;
-                const dist = Math.sqrt(distSq);
-                const force = -150 / distSq;
-                const fx = (dx / dist) * force;
-                const fy = (dy / dist) * force;
-                u.vx += fx; u.vy += fy;
-                v.vx -= fx; v.vy -= fy;
-              }
-            }
-
-            resolvedLinks.forEach(l => {
-              const u = l.source;
-              const v = l.target;
-              const dx = v.x - u.x;
-              const dy = v.y - u.y;
-              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-              const restLen = (layoutAlgorithm === 'modular-force' && u.moduleId === v.moduleId) ? 50 : 100;
-              const k = 0.035 * (dist - restLen);
-              const fx = (dx / dist) * k;
-              const fy = (dy / dist) * k;
-              u.vx += fx; u.vy += fy;
-              v.vx -= fx; v.vy -= fy;
-            });
-
-            const minRadius = 32;
-            for (let i = 0; i < nodes.length; i++) {
-              const u = nodes[i];
-              for (let j = i + 1; j < nodes.length; j++) {
-                const v = nodes[j];
-                const dx = v.x - u.x;
-                const dy = v.y - u.y;
-                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                if (dist < minRadius) {
-                  const overlap = minRadius - dist;
-                  const forceX = (dx / dist) * overlap * 0.25;
-                  const forceY = (dy / dist) * overlap * 0.25;
-                  u.vx -= forceX; u.vy -= forceY;
-                  v.vx += forceX; v.vy += forceY;
-                }
-              }
-            }
-
-            nodes.forEach(n => {
-              if (n.fx !== undefined && n.fx !== null) return;
-              n.x += n.vx;
-              n.y += n.vy;
-              n.vx *= 0.82;
-              n.vy *= 0.82;
-            });
-
-            if (step % 12 === 0 || step === iterations - 1) {
-              self.postMessage({
-                type: 'tick',
-                nodes: nodes.map(n => ({ id: n.id, x: n.x, y: n.y, vx: n.vx, vy: n.vy, fx: n.fx, fy: n.fy })),
-                progress: (step + 1) / iterations
-              });
-            }
-          }
-          self.postMessage({ type: 'end', nodes });
-        };
-      `], { type: 'application/javascript' });
-
-      const workerUrl = URL.createObjectURL(workerBlob);
-      const worker = new Worker(workerUrl);
-      activeWorkerRef.current = worker;
-
-      const clusterCenters = layoutAlgorithm === 'modular-force'
-        ? Object.fromEntries(computeModuleClusterCenters(data.modules || [], width, height))
-        : null;
-
-      worker.postMessage({
-        nodes: nodes.map(n => ({ id: n.id, label: n.label, group: n.group, moduleId: n.moduleId, importance: n.importance, x: n.x, y: n.y, fx: n.fx, fy: n.fy })),
-        links: links.map(l => ({ source: typeof l.source === 'object' ? (l.source as any).id : l.source, target: typeof l.target === 'object' ? (l.target as any).id : l.target, value: l.value })),
-        width,
-        height,
-        layoutAlgorithm,
-        clusterCenters
-      });
-
-      worker.onmessage = (e) => {
-        const { type: msgType, nodes: workerNodes } = e.data;
-        if (msgType === 'tick' || msgType === 'end') {
-          const nodeMap = new Map<string, any>(workerNodes.map((n: any) => [n.id, n]));
-          nodes.forEach(node => {
-            const updated = nodeMap.get(node.id);
-            if (updated) {
-              node.x = updated.x;
-              node.y = updated.y;
-              node.vx = updated.vx;
-              node.vy = updated.vy;
-            }
-          });
-
-          link
-            .attr("x1", (d: any) => (d.source as D3Node).x!)
-            .attr("y1", (d: any) => (d.source as D3Node).y!)
-            .attr("x2", (d: any) => (d.target as D3Node).x!)
-            .attr("y2", (d: any) => (d.target as D3Node).y!);
-
-          nodeGroup.attr("transform", (d: D3Node) => `translate(${d.x},${d.y})`);
-
-          if (layoutAlgorithm === 'modular-force' || isFocusMode) {
-            updateModuleHulls();
-          }
-
-          if (msgType === 'end') {
-            setLiveNodes([...nodes]);
-          }
-        }
-      };
+    // Asynchronous Web Worker layout computation off main thread
+    if (workerManagerRef.current) {
+      workerManagerRef.current.destroy();
     }
+    const workerMgr = new D3ForceWorkerManager();
+    workerManagerRef.current = workerMgr;
+
+    const clusterCentersObj = layoutAlgorithm === 'modular-force'
+      ? Object.fromEntries(computeModuleClusterCenters(data.modules || [], width, height))
+      : null;
+
+    workerMgr.init({
+      nodes: nodes.map(n => ({
+        id: n.id,
+        label: n.label,
+        group: n.group,
+        moduleId: n.moduleId,
+        importance: n.importance,
+        x: n.x || width / 2,
+        y: n.y || height / 2,
+        vx: n.vx || 0,
+        vy: n.vy || 0,
+        fx: n.fx,
+        fy: n.fy
+      })),
+      links: links.map(l => ({
+        source: typeof l.source === 'object' ? (l.source as any).id : l.source,
+        target: typeof l.target === 'object' ? (l.target as any).id : l.target,
+        value: l.value
+      })),
+      width,
+      height,
+      layoutAlgorithm,
+      clusterCenters: clusterCentersObj,
+      onTick: (workerNodes) => {
+        const nodeMap = new Map<string, any>(workerNodes.map(n => [n.id, n]));
+        nodes.forEach(node => {
+          const updated = nodeMap.get(node.id);
+          if (updated) {
+            node.x = updated.x;
+            node.y = updated.y;
+            node.vx = updated.vx;
+            node.vy = updated.vy;
+          }
+        });
+
+        link
+          .attr("x1", (d: any) => (d.source as D3Node).x!)
+          .attr("y1", (d: any) => (d.source as D3Node).y!)
+          .attr("x2", (d: any) => (d.target as D3Node).x!)
+          .attr("y2", (d: any) => (d.target as D3Node).y!);
+
+        nodeGroup.attr("transform", (d: D3Node) => `translate(${d.x},${d.y})`);
+
+        if (layoutAlgorithm === 'modular-force' || isFocusMode) {
+          updateModuleHulls();
+        }
+      },
+      onEnd: (workerNodes) => {
+        const nodeMap = new Map<string, any>(workerNodes.map(n => [n.id, n]));
+        nodes.forEach(node => {
+          const updated = nodeMap.get(node.id);
+          if (updated) {
+            node.x = updated.x;
+            node.y = updated.y;
+          }
+        });
+        setLiveNodes([...nodes]);
+        if (layoutAlgorithm === 'modular-force' || isFocusMode) {
+          updateModuleHulls();
+        }
+      }
+    });
 
     // Links with distinct styles based on connector type value
     const link = g.append("g")
@@ -1932,21 +1791,30 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
       .style("text-shadow", "0 1px 3px rgba(0,0,0,0.95)")
       .style("pointer-events", "none");
 
-    // Drag behavior with simulation warming
+    // Drag behavior offloaded to Web Worker
     const drag = d3.drag<SVGGElement, D3Node>()
       .on("start", (event, d) => {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
         d.fx = d.x;
         d.fy = d.y;
+        if (workerManagerRef.current) {
+          workerManagerRef.current.handleDrag(d.id, d.x, d.y, 0.35);
+        }
       })
       .on("drag", (event, d) => {
         d.fx = event.x;
         d.fy = event.y;
+        d.x = event.x;
+        d.y = event.y;
+        if (workerManagerRef.current) {
+          workerManagerRef.current.handleDrag(d.id, event.x, event.y, 0.35);
+        }
       })
       .on("end", (event, d) => {
-        if (!event.active) simulation.alphaTarget(0);
         d.fx = null;
         d.fy = null;
+        if (workerManagerRef.current) {
+          workerManagerRef.current.handleDrag(d.id, null, null, 0);
+        }
       });
 
     nodeGroup.call(drag as any);
@@ -2035,6 +1903,9 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
 
     return () => {
       simulation.stop();
+      if (workerManagerRef.current) {
+        workerManagerRef.current.destroy();
+      }
       if (activeWorkerRef.current) {
         activeWorkerRef.current.terminate();
       }
