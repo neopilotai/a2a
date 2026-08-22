@@ -213,7 +213,7 @@ export const CodeAsDesignMaterialView: React.FC<CodeAsDesignMaterialViewProps> =
   };
 
   return (
-    <div className="w-full space-y-10 animate-in fade-in duration-500">
+    <div className="w-full max-w-[1600px] mx-auto space-y-8 pb-16 animate-in fade-in duration-500">
       
       {fullScreenImage && (
         <ImageViewer 

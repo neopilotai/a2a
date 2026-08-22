@@ -95,7 +95,7 @@ const DevStudio: React.FC<DevStudioProps> = ({ initialState, onNavigate }) => {
   return (
     // Mobile: Flex Column, Desktop: Flex Row. 
     // Mobile: Auto height (stacked), Desktop: Calculated full viewport height
-    <div className="flex flex-col lg:flex-row gap-6 h-auto lg:h-[calc(100vh-180px)] min-h-0 lg:min-h-[600px]">
+    <div className="w-full max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-6 h-auto lg:h-[calc(100vh-180px)] min-h-0 lg:min-h-[600px] pb-16 animate-in fade-in duration-500">
       
       {/* Left Pane: Interactive Graph */}
       {/* Mobile: Fixed 400px height, Desktop: Flex-1 (fill remaining) */}
