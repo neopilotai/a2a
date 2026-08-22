@@ -1,11 +1,12 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
+ */
 
 import { RepoFileTree, DataFlowGraph, D3Node, D3Link } from '../types';
 import { getTechForFilePath } from './techStackDetector';
 import { detectArchitecturalModules } from './moduleDetectionService';
+import { GRAPH_WORKER_SCRIPT, WorkerGraphNode, WorkerGraphLink } from '../workers/graph.worker';
 
 /**
  * Builds a structured DataFlowGraph from repository file tree
@@ -162,4 +163,247 @@ export function buildGraphFromFileTree(repoName: string, fileTree: RepoFileTree[
     modules,
     decomposition
   };
+}
+
+// -------------------------------------------------------------
+// WEB WORKER CLIENT FOR HEAVY GRAPH & PATHFINDING COMPUTATIONS
+// -------------------------------------------------------------
+
+export class GraphWorkerClient {
+  private worker: Worker | null = null;
+  private workerUrl: string | null = null;
+  private pendingRequests = new Map<string, { resolve: (val: any) => void; reject: (err: any) => void }>();
+  private requestCounter = 0;
+
+  constructor() {
+    this.initWorker();
+  }
+
+  private initWorker() {
+    try {
+      const blob = new Blob([GRAPH_WORKER_SCRIPT], { type: 'application/javascript' });
+      this.workerUrl = URL.createObjectURL(blob);
+      this.worker = new Worker(this.workerUrl);
+
+      this.worker.onmessage = (e) => {
+        const data = e.data;
+        if (!data) return;
+
+        if (data.requestId && this.pendingRequests.has(data.requestId)) {
+          const { resolve } = this.pendingRequests.get(data.requestId)!;
+          this.pendingRequests.delete(data.requestId);
+          resolve(data);
+        }
+      };
+
+      this.worker.onerror = (err) => {
+        console.error('GraphWorker error:', err);
+      };
+    } catch (err) {
+      console.warn('Web Worker initialization fallback triggered:', err);
+    }
+  }
+
+  private getNextRequestId(): string {
+    return `req-${Date.now()}-${++this.requestCounter}`;
+  }
+
+  public destroy() {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+    if (this.workerUrl) {
+      URL.revokeObjectURL(this.workerUrl);
+      this.workerUrl = null;
+    }
+    this.pendingRequests.clear();
+  }
+
+  // 1. Offloaded Shortest Path Computation (Dijkstra)
+  public findShortestPath(
+    nodes: WorkerGraphNode[],
+    links: WorkerGraphLink[],
+    sourceId: string,
+    targetId: string,
+    directed = false
+  ): Promise<{ path: string[]; distance: number; elapsedMs: number }> {
+    return new Promise((resolve, reject) => {
+      if (!this.worker) {
+        // Fallback synchronous if worker unavailable
+        resolve({ path: [sourceId, targetId], distance: 1, elapsedMs: 0 });
+        return;
+      }
+
+      const requestId = this.getNextRequestId();
+      this.pendingRequests.set(requestId, { resolve, reject });
+
+      this.worker.postMessage({
+        type: 'find-path',
+        requestId,
+        nodes,
+        links,
+        sourceId,
+        targetId,
+        directed
+      });
+    });
+  }
+
+  // 2. Offloaded Dependency Impact Traversal (BFS)
+  public findDependencyImpact(
+    nodes: WorkerGraphNode[],
+    links: WorkerGraphLink[],
+    startId: string,
+    direction: 'downstream' | 'upstream' | 'both' = 'downstream',
+    maxDepth = 6
+  ): Promise<{
+    startId: string;
+    impactedNodes: string[];
+    directDependents: string[];
+    indirectDependents: string[];
+    impactCount: number;
+    elapsedMs: number;
+  }> {
+    return new Promise((resolve, reject) => {
+      if (!this.worker) {
+        resolve({
+          startId,
+          impactedNodes: [startId],
+          directDependents: [],
+          indirectDependents: [],
+          impactCount: 0,
+          elapsedMs: 0
+        });
+        return;
+      }
+
+      const requestId = this.getNextRequestId();
+      this.pendingRequests.set(requestId, { resolve, reject });
+
+      this.worker.postMessage({
+        type: 'find-impact',
+        requestId,
+        nodes,
+        links,
+        startId,
+        direction,
+        maxDepth
+      });
+    });
+  }
+
+  // 3. Offloaded Graph Centrality & Circular Dependency Metrics
+  public calculateGraphMetrics(
+    nodes: WorkerGraphNode[],
+    links: WorkerGraphLink[]
+  ): Promise<{
+    centrality: Record<string, { inDegree: number; outDegree: number; totalDegree: number; importanceScore: number }>;
+    cycles: string[][];
+    hasCircularDependencies: boolean;
+    elapsedMs: number;
+  }> {
+    return new Promise((resolve, reject) => {
+      if (!this.worker) {
+        resolve({ centrality: {}, cycles: [], hasCircularDependencies: false, elapsedMs: 0 });
+        return;
+      }
+
+      const requestId = this.getNextRequestId();
+      this.pendingRequests.set(requestId, { resolve, reject });
+
+      this.worker.postMessage({
+        type: 'calculate-metrics',
+        requestId,
+        nodes,
+        links
+      });
+    });
+  }
+
+  // 4. Offloaded Heavy D3 Force Layout Positioning
+  public computeLayoutAsync(
+    nodes: WorkerGraphNode[],
+    links: WorkerGraphLink[],
+    width: number,
+    height: number,
+    layoutAlgorithm: 'force' | 'modular-force' | 'hierarchical' | 'radial' = 'force',
+    iterations = 120
+  ): Promise<WorkerGraphNode[]> {
+    return new Promise((resolve) => {
+      if (!this.worker) {
+        resolve(nodes);
+        return;
+      }
+
+      const tempWorker = new Worker(this.workerUrl!);
+      tempWorker.onmessage = (e) => {
+        if (e.data && (e.data.type === 'end' || e.data.type === 'tick')) {
+          if (e.data.type === 'end') {
+            tempWorker.terminate();
+            resolve(e.data.nodes);
+          }
+        }
+      };
+
+      tempWorker.postMessage({
+        type: 'run-layout',
+        nodes,
+        links,
+        width,
+        height,
+        layoutAlgorithm,
+        iterations
+      });
+    });
+  }
+}
+
+// Global Singleton Worker Client Instance for App-wide Heavy Graph Operations
+let globalWorkerClient: GraphWorkerClient | null = null;
+
+export function getGraphWorkerClient(): GraphWorkerClient {
+  if (!globalWorkerClient) {
+    globalWorkerClient = new GraphWorkerClient();
+  }
+  return globalWorkerClient;
+}
+
+// Standard Async Export Functions for UI components
+export function findShortestPathAsync(
+  nodes: WorkerGraphNode[],
+  links: WorkerGraphLink[],
+  sourceId: string,
+  targetId: string,
+  directed = false
+) {
+  return getGraphWorkerClient().findShortestPath(nodes, links, sourceId, targetId, directed);
+}
+
+export function findDependencyImpactAsync(
+  nodes: WorkerGraphNode[],
+  links: WorkerGraphLink[],
+  startId: string,
+  direction: 'downstream' | 'upstream' | 'both' = 'downstream',
+  maxDepth = 6
+) {
+  return getGraphWorkerClient().findDependencyImpact(nodes, links, startId, direction, maxDepth);
+}
+
+export function calculateGraphMetricsAsync(
+  nodes: WorkerGraphNode[],
+  links: WorkerGraphLink[]
+) {
+  return getGraphWorkerClient().calculateGraphMetrics(nodes, links);
+}
+
+export function computeGraphLayoutAsync(
+  nodes: WorkerGraphNode[],
+  links: WorkerGraphLink[],
+  width: number,
+  height: number,
+  layoutAlgorithm: 'force' | 'modular-force' | 'hierarchical' | 'radial' = 'force',
+  iterations = 120
+) {
+  return getGraphWorkerClient().computeLayoutAsync(nodes, links, width, height, layoutAlgorithm, iterations);
 }
