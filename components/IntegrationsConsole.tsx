@@ -62,23 +62,24 @@ import {
   Wrench
 } from 'lucide-react';
 
+import { useStudioStore } from '../store';
+
 interface IntegrationsConsoleProps {
-  activeRepoContext: ActiveRepoContext | null;
-  repoHistory: RepoHistoryItem[];
-  settings?: IntegrationsConsoleSettings;
-  onSaveSettings?: (settings: IntegrationsConsoleSettings) => void;
   onNavigate: (mode: ViewMode, data?: any) => void;
   onBack: () => void;
 }
 
 export const IntegrationsConsole: React.FC<IntegrationsConsoleProps> = ({
-  activeRepoContext,
-  repoHistory,
-  settings,
-  onSaveSettings,
   onNavigate,
   onBack
 }) => {
+  const { 
+    activeRepoContext, 
+    repoHistory, 
+    integrationsSettings: settings, 
+    setIntegrationsSettings 
+  } = useStudioStore();
+
   const [customCodebases, setCustomCodebases] = useState<CodebaseCatalogItem[]>([]);
   
   // Build unified codebase catalog
@@ -123,16 +124,14 @@ export const IntegrationsConsole: React.FC<IntegrationsConsoleProps> = ({
 
   // Sync to persistence when state changes
   useEffect(() => {
-    if (onSaveSettings) {
-      onSaveSettings({
-        activeTab,
-        activeCodebaseId: selectedCodebase.id,
-        selectedIde,
-        selectedPlatform,
-        vibeOptions,
-        commandHistory
-      });
-    }
+    setIntegrationsSettings({
+      activeTab,
+      activeCodebaseId: selectedCodebase.id,
+      selectedIde,
+      selectedPlatform,
+      vibeOptions,
+      commandHistory
+    });
   }, [activeTab, selectedCodebase.id, selectedIde, selectedPlatform, vibeOptions, commandHistory]);
 
   const handleAddCustomCodebase = (repoName: string, fileTree: RepoFileTree[]) => {
@@ -186,7 +185,7 @@ export const IntegrationsConsole: React.FC<IntegrationsConsoleProps> = ({
       <div className="fixed top-0 left-1/4 -translate-x-1/2 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="fixed top-0 right-1/4 translate-x-1/2 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-8 lg:px-8 pt-8 space-y-8">
         {/* 1. TOP NAVIGATION & HEADER */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-5">
           <div className="flex items-center gap-3.5">

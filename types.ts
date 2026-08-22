@@ -63,6 +63,7 @@ export interface D3Node extends SimulationNodeDatum {
   techBadge?: string;
   techColor?: string;
   size?: number;
+  importance?: string;
   x?: number;
   y?: number;
   fx?: number | null;
@@ -327,6 +328,7 @@ export interface ChatMessage {
   timestamp: Date;
   modelUsed?: string;
   roleId?: string;
+  citations?: Citation[];
 }
 
 // Plan Creator Types
@@ -745,6 +747,7 @@ export interface AiAssistantSettings {
   includeCodebaseContext: boolean;
   customContext: string;
   messages: ChatMessage[];
+  enableSearchGrounding?: boolean;
 }
 
 export interface PlanCreatorSettings {

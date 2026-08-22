@@ -340,7 +340,7 @@ export const ChangeStackStudio: React.FC<ChangeStackStudioProps> = ({
       <div className="fixed top-0 left-1/3 -translate-x-1/2 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="fixed top-0 right-1/4 translate-x-1/2 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-8 lg:px-8 pt-8 space-y-8">
         
         {/* 1. TOP HEADER & WORKSPACE CONTEXT */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-5">

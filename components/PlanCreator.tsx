@@ -645,10 +645,10 @@ export const PlanCreator: React.FC<PlanCreatorProps> = ({ initialRepoContext, on
     : [];
 
   return (
-    <div className="space-y-6 max-w-[1400px] mx-auto animate-in fade-in duration-500">
+    <div className="space-y-8 max-w-[1400px] mx-auto animate-in fade-in duration-500 pb-16">
       
       {/* Header Banner */}
-      <div className="glass-panel p-5 rounded-3xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 border border-white/10 shadow-xl">
+      <div className="glass-panel p-6 rounded-3xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 border border-white/10 shadow-xl">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-violet-500/20 rounded-2xl border border-violet-500/30 text-violet-300 shadow-neon-violet">
             <ClipboardList className="w-6 h-6" />

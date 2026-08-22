@@ -147,6 +147,9 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialRepoContext, on
     savedSettings?.includeCodebaseContext !== undefined ? savedSettings.includeCodebaseContext : true
   );
   const [customContext, setCustomContext] = useState(savedSettings?.customContext || '');
+  const [enableSearchGrounding, setEnableSearchGrounding] = useState(
+    savedSettings?.enableSearchGrounding !== undefined ? savedSettings.enableSearchGrounding : true
+  );
   const [showContextModal, setShowContextModal] = useState(false);
   const [showPromptLabModal, setShowPromptLabModal] = useState(false);
   const [showGlossaryModal, setShowGlossaryModal] = useState(false);
@@ -178,9 +181,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialRepoContext, on
       selectedModel,
       includeCodebaseContext,
       customContext,
-      messages
+      messages,
+      enableSearchGrounding
     });
-  }, [selectedRole, selectedModel, includeCodebaseContext, customContext, messages]);
+  }, [selectedRole, selectedModel, includeCodebaseContext, customContext, messages, enableSearchGrounding]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -247,21 +251,23 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialRepoContext, on
           text: m.text
         }));
 
-      const reply = await sendAssistantChatMessage(
+      const { text: replyText, citations } = await sendAssistantChatMessage(
         historyPayload,
         query,
         selectedRole.systemInstruction,
         selectedModel,
-        contextStr || undefined
+        contextStr || undefined,
+        enableSearchGrounding
       );
 
       const botMessage: ChatMessage = {
         id: `model-${Date.now()}`,
         role: 'model',
-        text: reply,
+        text: replyText,
         timestamp: new Date(),
         modelUsed: selectedModel,
-        roleId: selectedRole.id
+        roleId: selectedRole.id,
+        citations: citations
       };
 
       setMessages(prev => [...prev, botMessage]);
@@ -405,7 +411,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialRepoContext, on
           </div>
 
           {/* Context Toggles */}
-          <div className="pt-2 border-t border-white/5 space-y-2">
+          <div className="pt-2 border-t border-white/5 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-mono text-slate-300 flex items-center gap-1.5">
                 <FileCode2 className="w-3.5 h-3.5 text-sky-400" />
@@ -420,6 +426,24 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialRepoContext, on
               >
                 <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
                   includeCodebaseContext ? 'translate-x-4' : 'translate-x-0'
+                }`} />
+              </button>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-mono text-slate-300 flex items-center gap-1.5" title="Google Search Grounding: ground with live web data">
+                <Compass className="w-3.5 h-3.5 text-amber-400" />
+                Search Grounding
+              </span>
+              <button
+                onClick={() => setEnableSearchGrounding(!enableSearchGrounding)}
+                className={`w-9 h-5 rounded-full transition-colors relative p-0.5 ${
+                  enableSearchGrounding ? 'bg-amber-600' : 'bg-slate-700'
+                }`}
+                title="Toggle Google Search Grounding"
+              >
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                  enableSearchGrounding ? 'translate-x-4' : 'translate-x-0'
                 }`} />
               </button>
             </div>
@@ -617,6 +641,32 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ initialRepoContext, on
                       {msg.text}
                     </ReactMarkdown>
                   </div>
+
+                  {/* Citations / Grounding Sources */}
+                  {msg.citations && msg.citations.length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-white/5 space-y-1.5 animate-in fade-in duration-300">
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono text-amber-400 font-bold uppercase tracking-wider">
+                        <Compass className="w-3.5 h-3.5 text-amber-400 animate-spin-slow" />
+                        <span>Grounded Search Sources</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {msg.citations.map((citation, idx) => (
+                          <a
+                            key={idx}
+                            href={citation.uri}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            referrerPolicy="no-referrer"
+                            className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-950/70 hover:bg-slate-950 border border-white/5 hover:border-amber-500/30 text-[11px] text-slate-300 hover:text-amber-300 transition-all font-mono truncate max-w-[200px]"
+                            title={citation.title || citation.uri}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                            <span className="truncate">{citation.title || "Reference"}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Dynamic Cognitive Action Chips on Assistant Responses */}
                   {!isUser && msg.id !== 'welcome-msg' && (

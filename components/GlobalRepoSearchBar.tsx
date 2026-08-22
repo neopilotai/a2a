@@ -30,10 +30,10 @@ import {
 import { RepoFileTree, ViewMode, ActiveRepoContext, ModuleCategory } from '../types';
 import { fetchRepoFileTree } from '../services/githubService';
 
+import { useStudioStore } from '../store';
+
 interface GlobalRepoSearchBarProps {
-  activeRepoContext: ActiveRepoContext | null;
   onNavigate: (mode: ViewMode, data?: any) => void;
-  onSelectRepoForContext: (repoName: string, fileTree: RepoFileTree[]) => void;
 }
 
 const POPULAR_REPOS = [
@@ -71,10 +71,9 @@ function classifyFile(path: string): { category: ModuleCategory; label: string; 
 }
 
 export const GlobalRepoSearchBar: React.FC<GlobalRepoSearchBarProps> = ({
-  activeRepoContext,
-  onNavigate,
-  onSelectRepoForContext
+  onNavigate
 }) => {
+  const { activeRepoContext, setActiveRepoContext } = useStudioStore();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
@@ -237,7 +236,11 @@ Please analyze its architectural role, explain its likely dependencies, and reco
     setIsLoadingRepo(true);
     try {
       const tree = await fetchRepoFileTree(repoName);
-      onSelectRepoForContext(repoName, tree);
+      setActiveRepoContext({
+        repoName,
+        fileTree: tree,
+        lastLoadedAt: Date.now()
+      });
     } catch (err) {
       console.error("Failed to load repo:", err);
     } finally {
@@ -267,7 +270,7 @@ Please analyze its architectural role, explain its likely dependencies, and reco
           setIsOpen(true);
           setTimeout(() => inputRef.current?.focus(), 50);
         }}
-        className="w-full group flex items-center justify-between gap-2.5 px-3 py-1.5 md:py-2 rounded-xl bg-slate-900/60 hover:bg-slate-900/90 border border-white/10 hover:border-violet-500/40 text-xs font-mono text-slate-400 hover:text-slate-200 transition-all shadow-inner hover:shadow-neon-violet"
+        className="w-full group flex items-center justify-between gap-2.5 px-4 py-2 rounded-xl bg-slate-900/60 hover:bg-slate-900/90 border border-white/10 hover:border-violet-500/40 text-xs font-mono text-slate-400 hover:text-slate-200 transition-all shadow-inner hover:shadow-neon-violet"
         title="Quick search codebase files (⌘K / Ctrl+K)"
       >
         <div className="flex items-center gap-2 min-w-0 truncate">
@@ -297,7 +300,7 @@ Please analyze its architectural role, explain its likely dependencies, and reco
           <div className="glass-panel rounded-2xl border border-white/15 shadow-2xl bg-slate-950/95 backdrop-blur-xl overflow-hidden flex flex-col max-h-[80vh]">
             
             {/* Search Input Bar */}
-            <div className="p-3.5 border-b border-white/10 flex items-center gap-3 bg-slate-900/50">
+            <div className="p-4 border-b border-white/10 flex items-center gap-3 bg-slate-900/50">
               <Search className="w-4 h-4 text-violet-400 shrink-0" />
               <input
                 ref={inputRef}

@@ -115,6 +115,7 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const simulationRef = useRef<d3.Simulation<D3Node, D3Link> | null>(null);
+  const activeWorkerRef = useRef<Worker | null>(null);
   const zoomContainerRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null);
   const nodesRef = useRef<D3Node[]>([]);
   const linksRef = useRef<D3Link[]>([]);
@@ -131,6 +132,28 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
   const [highlightedModuleId, setHighlightedModuleId] = useState<string | null>(null);
   const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState<boolean>(false);
   const [liveNodes, setLiveNodes] = useState<D3Node[]>([]);
+
+  // Stable callback references to prevent infinite simulation rebuild loops
+  const onNodeClickRef = useRef(onNodeClick);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  const onTraceNodeChangeRef = useRef(onTraceNodeChange);
+  const onFocusModeChangeRef = useRef(onFocusModeChange);
+  const onLayoutAlgorithmChangeRef = useRef(onLayoutAlgorithmChange);
+  const onHighlightGroupRef = useRef(onHighlightGroup);
+
+  useEffect(() => { onNodeClickRef.current = onNodeClick; }, [onNodeClick]);
+  useEffect(() => { onSelectionChangeRef.current = onSelectionChange; }, [onSelectionChange]);
+  useEffect(() => { onTraceNodeChangeRef.current = onTraceNodeChange; }, [onTraceNodeChange]);
+  useEffect(() => { onFocusModeChangeRef.current = onFocusModeChange; }, [onFocusModeChange]);
+  useEffect(() => { onLayoutAlgorithmChangeRef.current = onLayoutAlgorithmChange; }, [onLayoutAlgorithmChange]);
+  useEffect(() => { onHighlightGroupRef.current = onHighlightGroup; }, [onHighlightGroup]);
+
+  // Keep track of previously notified trace structures to prevent redundant parent state updates
+  const prevTraceRef = useRef<{
+    focalNodeId: string | null;
+    incomingIds: string;
+    outgoingIds: string;
+  }>({ focalNodeId: null, incomingIds: '', outgoingIds: '' });
 
   // Sync external layout algorithm prop
   useEffect(() => {
@@ -285,19 +308,30 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
     return calculateFileImpact(traceDetails.focalNode, data);
   }, [traceDetails?.focalNode, data]);
 
-  // Notify parent component of trace changes
+  // Notify parent component of trace changes with strict structural primitive checking
   useEffect(() => {
-    if (onTraceNodeChange) {
-      if (traceDetails) {
-        onTraceNodeChange(traceDetails.focalNode, {
-          incoming: traceDetails.incomingNodes,
-          outgoing: traceDetails.outgoingNodes,
-        });
-      } else {
-        onTraceNodeChange(null, null);
+    if (onTraceNodeChangeRef.current) {
+      const focalNodeId = traceDetails?.focalNode?.id || null;
+      const incomingIds = traceDetails ? Array.from(traceDetails.incomingNodeIds).sort().join(',') : '';
+      const outgoingIds = traceDetails ? Array.from(traceDetails.outgoingNodeIds).sort().join(',') : '';
+
+      if (
+        prevTraceRef.current.focalNodeId !== focalNodeId ||
+        prevTraceRef.current.incomingIds !== incomingIds ||
+        prevTraceRef.current.outgoingIds !== outgoingIds
+      ) {
+        prevTraceRef.current = { focalNodeId, incomingIds, outgoingIds };
+        if (traceDetails) {
+          onTraceNodeChangeRef.current(traceDetails.focalNode, {
+            incoming: traceDetails.incomingNodes,
+            outgoing: traceDetails.outgoingNodes,
+          });
+        } else {
+          onTraceNodeChangeRef.current(null, null);
+        }
       }
     }
-  }, [traceDetails, onTraceNodeChange]);
+  }, [traceDetails]);
 
   // Reset view to default (Center with Scale = 1)
   const resetView = useCallback(() => {
@@ -669,43 +703,8 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
         }, 180);
       }
 
-    } else if (newLayout === 'modular-force') {
-      // Release pinned coordinates
-      nodesRef.current.forEach(node => {
-        node.fx = null;
-        node.fy = null;
-      });
-
-      // Clear tier lanes
-      if (!tierLanesGroup.empty()) {
-        tierLanesGroup.selectAll("*").remove();
-      }
-
-      // Compute cluster attraction centers for detected architectural modules
-      const clusterCenters = computeModuleClusterCenters(data.modules || [], width, height);
-
-      simulationRef.current
-        .force("clusterX", d3.forceX<D3Node>(d => clusterCenters.get(d.moduleId || 'mod-core')?.x || (width / 2)).strength(0.24))
-        .force("clusterY", d3.forceY<D3Node>(d => clusterCenters.get(d.moduleId || 'mod-core')?.y || (height / 2)).strength(0.24))
-        .force("link", d3.forceLink<D3Node, D3Link>(linksRef.current).id(d => d.id).distance((l: any) => {
-          const srcMod = (l.source as D3Node).moduleId;
-          const tgtMod = (l.target as D3Node).moduleId;
-          return (srcMod && tgtMod && srcMod === tgtMod) ? 50 : 135;
-        }).strength(0.65))
-        .force("charge", d3.forceManyBody().strength(-260))
-        .force("center", d3.forceCenter(width / 2, height / 2))
-        .force("collision", d3.forceCollide().radius(30));
-
-      simulationRef.current.alpha(0.85).restart();
-
-      if (autoFit) {
-        setTimeout(() => {
-          fitToContent();
-        }, 300);
-      }
-
     } else {
-      // Standard Force-Directed: release pinned coordinates and remove cluster forces
+      // Release pinned coordinates
       nodesRef.current.forEach(node => {
         node.fx = null;
         node.fy = null;
@@ -719,22 +718,232 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
         hullsGroup.selectAll("*").remove();
       }
 
-      simulationRef.current
-        .force("clusterX", null)
-        .force("clusterY", null)
-        .force("link", d3.forceLink<D3Node, D3Link>(linksRef.current).id(d => d.id).distance(90))
-        .force("charge", d3.forceManyBody().strength(-360))
-        .force("center", d3.forceCenter(width / 2, height / 2))
-        .force("collision", d3.forceCollide().radius(28));
-
-      // Heat simulation to let nodes disperse into organic force balance
-      simulationRef.current.alpha(0.75).restart();
-
-      if (autoFit) {
-        setTimeout(() => {
-          fitToContent();
-        }, 280);
+      if (activeWorkerRef.current) {
+        activeWorkerRef.current.terminate();
       }
+
+      const workerBlob = new Blob([`
+        self.onmessage = function(e) {
+          const { nodes, links, width, height, layoutAlgorithm, iterations = 150, clusterCenters } = e.data;
+          let useD3 = false;
+          try {
+            importScripts('https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js');
+            if (typeof d3 !== 'undefined') {
+              useD3 = true;
+            }
+          } catch (err) {}
+
+          if (useD3) {
+            try {
+              const simLinks = links.map(l => ({
+                source: typeof l.source === 'object' ? l.source.id : l.source,
+                target: typeof l.target === 'object' ? l.target.id : l.target,
+                value: l.value
+              }));
+
+              const simulation = d3.forceSimulation(nodes);
+              if (layoutAlgorithm === 'modular-force' && clusterCenters) {
+                const centerMap = new Map(Object.entries(clusterCenters));
+                simulation
+                  .force("clusterX", d3.forceX(d => {
+                    const center = centerMap.get(d.moduleId || 'mod-core');
+                    return center ? center.x : (width / 2);
+                  }).strength(0.24))
+                  .force("clusterY", d3.forceY(d => {
+                    const center = centerMap.get(d.moduleId || 'mod-core');
+                    return center ? center.y : (height / 2);
+                  }).strength(0.24))
+                  .force("link", d3.forceLink(simLinks).id(d => d.id).distance(l => {
+                    const srcMod = l.source.moduleId;
+                    const tgtMod = l.target.moduleId;
+                    return (srcMod && tgtMod && srcMod === tgtMod) ? 50 : 135;
+                  }).strength(0.65))
+                  .force("charge", d3.forceManyBody().strength(-260))
+                  .force("center", d3.forceCenter(width / 2, height / 2))
+                  .force("collision", d3.forceCollide().radius(30));
+              } else {
+                simulation
+                  .force("link", d3.forceLink(simLinks).id(d => d.id).distance(90))
+                  .force("charge", d3.forceManyBody().strength(-360))
+                  .force("center", d3.forceCenter(width / 2, height / 2))
+                  .force("collision", d3.forceCollide().radius(28))
+                  .force("x", d3.forceX(width / 2).strength(0.06))
+                  .force("y", d3.forceY(height / 2).strength(0.06));
+              }
+              simulation.stop();
+              for (let i = 0; i < iterations; i++) {
+                simulation.tick();
+                if (i % 12 === 0 || i === iterations - 1) {
+                  self.postMessage({
+                    type: 'tick',
+                    nodes: nodes.map(n => ({ id: n.id, x: n.x, y: n.y, vx: n.vx, vy: n.vy, fx: n.fx, fy: n.fy })),
+                    progress: (i + 1) / iterations
+                  });
+                }
+              }
+              self.postMessage({ type: 'end', nodes });
+              return;
+            } catch (err) {}
+          }
+
+          // Fallback Custom physics engine inside Worker (Offline-first / fail-safe)
+          const nodeMap = new Map();
+          nodes.forEach(n => {
+            n.x = n.x !== undefined ? n.x : (width / 2) + (Math.random() - 0.5) * 50;
+            n.y = n.y !== undefined ? n.y : (height / 2) + (Math.random() - 0.5) * 50;
+            n.vx = n.vx || 0;
+            n.vy = n.vy || 0;
+            nodeMap.set(n.id, n);
+          });
+
+          const resolvedLinks = links.map(l => {
+            const sId = typeof l.source === 'object' ? l.source.id : l.source;
+            const tId = typeof l.target === 'object' ? l.target.id : l.target;
+            return { source: nodeMap.get(sId), target: nodeMap.get(tId) };
+          }).filter(l => l.source && l.target);
+
+          const centerMap = clusterCenters ? new Map(Object.entries(clusterCenters)) : null;
+
+          for (let step = 0; step < iterations; step++) {
+            nodes.forEach(n => {
+              if (n.fx !== undefined && n.fx !== null) {
+                n.x = n.fx; n.y = n.fy; n.vx = 0; n.vy = 0; return;
+              }
+              if (layoutAlgorithm === 'modular-force' && centerMap) {
+                const center = centerMap.get(n.moduleId || 'mod-core') || { x: width / 2, y: height / 2 };
+                n.vx += (center.x - n.x) * 0.024;
+                n.vy += (center.y - n.y) * 0.024;
+              } else {
+                n.vx += (width / 2 - n.x) * 0.01;
+                n.vy += (height / 2 - n.y) * 0.01;
+              }
+            });
+
+            for (let i = 0; i < nodes.length; i++) {
+              const u = nodes[i];
+              for (let j = i + 1; j < nodes.length; j++) {
+                const v = nodes[j];
+                const dx = v.x - u.x;
+                const dy = v.y - u.y;
+                const distSq = dx * dx + dy * dy + 1;
+                const dist = Math.sqrt(distSq);
+                const force = -150 / distSq;
+                const fx = (dx / dist) * force;
+                const fy = (dy / dist) * force;
+                u.vx += fx; u.vy += fy;
+                v.vx -= fx; v.vy -= fy;
+              }
+            }
+
+            resolvedLinks.forEach(l => {
+              const u = l.source;
+              const v = l.target;
+              const dx = v.x - u.x;
+              const dy = v.y - u.y;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+              const restLen = (layoutAlgorithm === 'modular-force' && u.moduleId === v.moduleId) ? 50 : 100;
+              const k = 0.035 * (dist - restLen);
+              const fx = (dx / dist) * k;
+              const fy = (dy / dist) * k;
+              u.vx += fx; u.vy += fy;
+              v.vx -= fx; v.vy -= fy;
+            });
+
+            const minRadius = 32;
+            for (let i = 0; i < nodes.length; i++) {
+              const u = nodes[i];
+              for (let j = i + 1; j < nodes.length; j++) {
+                const v = nodes[j];
+                const dx = v.x - u.x;
+                const dy = v.y - u.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                if (dist < minRadius) {
+                  const overlap = minRadius - dist;
+                  const forceX = (dx / dist) * overlap * 0.25;
+                  const forceY = (dy / dist) * overlap * 0.25;
+                  u.vx -= forceX; u.vy -= forceY;
+                  v.vx += forceX; v.vy += forceY;
+                }
+              }
+            }
+
+            nodes.forEach(n => {
+              if (n.fx !== undefined && n.fx !== null) return;
+              n.x += n.vx;
+              n.y += n.vy;
+              n.vx *= 0.82;
+              n.vy *= 0.82;
+            });
+
+            if (step % 12 === 0 || step === iterations - 1) {
+              self.postMessage({
+                type: 'tick',
+                nodes: nodes.map(n => ({ id: n.id, x: n.x, y: n.y, vx: n.vx, vy: n.vy, fx: n.fx, fy: n.fy })),
+                progress: (step + 1) / iterations
+              });
+            }
+          }
+          self.postMessage({ type: 'end', nodes });
+        };
+      `], { type: 'application/javascript' });
+
+      const workerUrl = URL.createObjectURL(workerBlob);
+      const worker = new Worker(workerUrl);
+      activeWorkerRef.current = worker;
+
+      const clusterCenters = newLayout === 'modular-force'
+        ? Object.fromEntries(computeModuleClusterCenters(data.modules || [], width, height))
+        : null;
+
+      worker.postMessage({
+        nodes: nodesRef.current.map(n => ({ id: n.id, label: n.label, group: n.group, moduleId: n.moduleId, importance: n.importance, x: n.x, y: n.y, fx: n.fx, fy: n.fy })),
+        links: linksRef.current.map(l => ({ source: typeof l.source === 'object' ? (l.source as any).id : l.source, target: typeof l.target === 'object' ? (l.target as any).id : l.target, value: l.value })),
+        width,
+        height,
+        layoutAlgorithm: newLayout,
+        clusterCenters
+      });
+
+      worker.onmessage = (e) => {
+        const { type: msgType, nodes: workerNodes } = e.data;
+        if (msgType === 'tick' || msgType === 'end') {
+          const nodeMap = new Map<string, any>(workerNodes.map((n: any) => [n.id, n]));
+          nodesRef.current.forEach(node => {
+            const updated = nodeMap.get(node.id);
+            if (updated) {
+              node.x = updated.x;
+              node.y = updated.y;
+              node.vx = updated.vx;
+              node.vy = updated.vy;
+            }
+          });
+
+          const container = zoomContainerRef.current;
+          if (container) {
+            container.selectAll<SVGLineElement, any>(".links line")
+              .attr("x1", (d: any) => d.source.x!)
+              .attr("y1", (d: any) => d.source.y!)
+              .attr("x2", (d: any) => d.target.x!)
+              .attr("y2", (d: any) => d.target.y!);
+
+            container.selectAll<SVGGElement, any>(".nodes g")
+              .attr("transform", (d: D3Node) => `translate(${d.x},${d.y})`);
+
+            if (newLayout === 'modular-force' || isFocusMode) {
+              updateModuleHulls();
+            }
+          }
+
+          if (msgType === 'end') {
+            setLiveNodes([...nodesRef.current]);
+            if (autoFit) {
+              setTimeout(() => {
+                fitToContent();
+              }, 120);
+            }
+          }
+        }
+      };
     }
   }, [containerDimensions, onLayoutAlgorithmChange, fitToContent, data.modules]);
 
@@ -1393,7 +1602,225 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
         .force("y", d3.forceY(height / 2).strength(0.06));
     }
 
+    simulation.stop(); // Stop main thread simulation; worker computes the heavy layout!
     simulationRef.current = simulation;
+
+    // Asynchronous Web Worker layout computation
+    if (layoutAlgorithm !== 'hierarchical') {
+      const workerBlob = new Blob([`
+        self.onmessage = function(e) {
+          const { nodes, links, width, height, layoutAlgorithm, iterations = 150, clusterCenters } = e.data;
+          let useD3 = false;
+          try {
+            importScripts('https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js');
+            if (typeof d3 !== 'undefined') {
+              useD3 = true;
+            }
+          } catch (err) {}
+
+          if (useD3) {
+            try {
+              const simLinks = links.map(l => ({
+                source: typeof l.source === 'object' ? l.source.id : l.source,
+                target: typeof l.target === 'object' ? l.target.id : l.target,
+                value: l.value
+              }));
+
+              const simulation = d3.forceSimulation(nodes);
+              if (layoutAlgorithm === 'modular-force' && clusterCenters) {
+                const centerMap = new Map(Object.entries(clusterCenters));
+                simulation
+                  .force("clusterX", d3.forceX(d => {
+                    const center = centerMap.get(d.moduleId || 'mod-core');
+                    return center ? center.x : (width / 2);
+                  }).strength(0.24))
+                  .force("clusterY", d3.forceY(d => {
+                    const center = centerMap.get(d.moduleId || 'mod-core');
+                    return center ? center.y : (height / 2);
+                  }).strength(0.24))
+                  .force("link", d3.forceLink(simLinks).id(d => d.id).distance(l => {
+                    const srcMod = l.source.moduleId;
+                    const tgtMod = l.target.moduleId;
+                    return (srcMod && tgtMod && srcMod === tgtMod) ? 50 : 135;
+                  }).strength(0.65))
+                  .force("charge", d3.forceManyBody().strength(-260))
+                  .force("center", d3.forceCenter(width / 2, height / 2))
+                  .force("collision", d3.forceCollide().radius(30));
+              } else {
+                simulation
+                  .force("link", d3.forceLink(simLinks).id(d => d.id).distance(90))
+                  .force("charge", d3.forceManyBody().strength(-360))
+                  .force("center", d3.forceCenter(width / 2, height / 2))
+                  .force("collision", d3.forceCollide().radius(28))
+                  .force("x", d3.forceX(width / 2).strength(0.06))
+                  .force("y", d3.forceY(height / 2).strength(0.06));
+              }
+              simulation.stop();
+              for (let i = 0; i < iterations; i++) {
+                simulation.tick();
+                if (i % 12 === 0 || i === iterations - 1) {
+                  self.postMessage({
+                    type: 'tick',
+                    nodes: nodes.map(n => ({ id: n.id, x: n.x, y: n.y, vx: n.vx, vy: n.vy, fx: n.fx, fy: n.fy })),
+                    progress: (i + 1) / iterations
+                  });
+                }
+              }
+              self.postMessage({ type: 'end', nodes });
+              return;
+            } catch (err) {}
+          }
+
+          // Fallback Custom physics engine inside Worker (Offline-first / fail-safe)
+          const nodeMap = new Map();
+          nodes.forEach(n => {
+            n.x = n.x !== undefined ? n.x : (width / 2) + (Math.random() - 0.5) * 50;
+            n.y = n.y !== undefined ? n.y : (height / 2) + (Math.random() - 0.5) * 50;
+            n.vx = n.vx || 0;
+            n.vy = n.vy || 0;
+            nodeMap.set(n.id, n);
+          });
+
+          const resolvedLinks = links.map(l => {
+            const sId = typeof l.source === 'object' ? l.source.id : l.source;
+            const tId = typeof l.target === 'object' ? l.target.id : l.target;
+            return { source: nodeMap.get(sId), target: nodeMap.get(tId) };
+          }).filter(l => l.source && l.target);
+
+          const centerMap = clusterCenters ? new Map(Object.entries(clusterCenters)) : null;
+
+          for (let step = 0; step < iterations; step++) {
+            nodes.forEach(n => {
+              if (n.fx !== undefined && n.fx !== null) {
+                n.x = n.fx; n.y = n.fy; n.vx = 0; n.vy = 0; return;
+              }
+              if (layoutAlgorithm === 'modular-force' && centerMap) {
+                const center = centerMap.get(n.moduleId || 'mod-core') || { x: width / 2, y: height / 2 };
+                n.vx += (center.x - n.x) * 0.024;
+                n.vy += (center.y - n.y) * 0.024;
+              } else {
+                n.vx += (width / 2 - n.x) * 0.01;
+                n.vy += (height / 2 - n.y) * 0.01;
+              }
+            });
+
+            for (let i = 0; i < nodes.length; i++) {
+              const u = nodes[i];
+              for (let j = i + 1; j < nodes.length; j++) {
+                const v = nodes[j];
+                const dx = v.x - u.x;
+                const dy = v.y - u.y;
+                const distSq = dx * dx + dy * dy + 1;
+                const dist = Math.sqrt(distSq);
+                const force = -150 / distSq;
+                const fx = (dx / dist) * force;
+                const fy = (dy / dist) * force;
+                u.vx += fx; u.vy += fy;
+                v.vx -= fx; v.vy -= fy;
+              }
+            }
+
+            resolvedLinks.forEach(l => {
+              const u = l.source;
+              const v = l.target;
+              const dx = v.x - u.x;
+              const dy = v.y - u.y;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+              const restLen = (layoutAlgorithm === 'modular-force' && u.moduleId === v.moduleId) ? 50 : 100;
+              const k = 0.035 * (dist - restLen);
+              const fx = (dx / dist) * k;
+              const fy = (dy / dist) * k;
+              u.vx += fx; u.vy += fy;
+              v.vx -= fx; v.vy -= fy;
+            });
+
+            const minRadius = 32;
+            for (let i = 0; i < nodes.length; i++) {
+              const u = nodes[i];
+              for (let j = i + 1; j < nodes.length; j++) {
+                const v = nodes[j];
+                const dx = v.x - u.x;
+                const dy = v.y - u.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                if (dist < minRadius) {
+                  const overlap = minRadius - dist;
+                  const forceX = (dx / dist) * overlap * 0.25;
+                  const forceY = (dy / dist) * overlap * 0.25;
+                  u.vx -= forceX; u.vy -= forceY;
+                  v.vx += forceX; v.vy += forceY;
+                }
+              }
+            }
+
+            nodes.forEach(n => {
+              if (n.fx !== undefined && n.fx !== null) return;
+              n.x += n.vx;
+              n.y += n.vy;
+              n.vx *= 0.82;
+              n.vy *= 0.82;
+            });
+
+            if (step % 12 === 0 || step === iterations - 1) {
+              self.postMessage({
+                type: 'tick',
+                nodes: nodes.map(n => ({ id: n.id, x: n.x, y: n.y, vx: n.vx, vy: n.vy, fx: n.fx, fy: n.fy })),
+                progress: (step + 1) / iterations
+              });
+            }
+          }
+          self.postMessage({ type: 'end', nodes });
+        };
+      `], { type: 'application/javascript' });
+
+      const workerUrl = URL.createObjectURL(workerBlob);
+      const worker = new Worker(workerUrl);
+      activeWorkerRef.current = worker;
+
+      const clusterCenters = layoutAlgorithm === 'modular-force'
+        ? Object.fromEntries(computeModuleClusterCenters(data.modules || [], width, height))
+        : null;
+
+      worker.postMessage({
+        nodes: nodes.map(n => ({ id: n.id, label: n.label, group: n.group, moduleId: n.moduleId, importance: n.importance, x: n.x, y: n.y, fx: n.fx, fy: n.fy })),
+        links: links.map(l => ({ source: typeof l.source === 'object' ? (l.source as any).id : l.source, target: typeof l.target === 'object' ? (l.target as any).id : l.target, value: l.value })),
+        width,
+        height,
+        layoutAlgorithm,
+        clusterCenters
+      });
+
+      worker.onmessage = (e) => {
+        const { type: msgType, nodes: workerNodes } = e.data;
+        if (msgType === 'tick' || msgType === 'end') {
+          const nodeMap = new Map<string, any>(workerNodes.map((n: any) => [n.id, n]));
+          nodes.forEach(node => {
+            const updated = nodeMap.get(node.id);
+            if (updated) {
+              node.x = updated.x;
+              node.y = updated.y;
+              node.vx = updated.vx;
+              node.vy = updated.vy;
+            }
+          });
+
+          link
+            .attr("x1", (d: any) => (d.source as D3Node).x!)
+            .attr("y1", (d: any) => (d.source as D3Node).y!)
+            .attr("x2", (d: any) => (d.target as D3Node).x!)
+            .attr("y2", (d: any) => (d.target as D3Node).y!);
+
+          nodeGroup.attr("transform", (d: D3Node) => `translate(${d.x},${d.y})`);
+
+          if (layoutAlgorithm === 'modular-force' || isFocusMode) {
+            updateModuleHulls();
+          }
+
+          if (msgType === 'end') {
+            setLiveNodes([...nodes]);
+          }
+        }
+      };
+    }
 
     // Links with distinct styles based on connector type value
     const link = g.append("g")
@@ -1433,13 +1860,13 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
 
         setPinnedNodeIds(newIds);
 
-        if (onNodeClick) {
-          onNodeClick(d);
+        if (onNodeClickRef.current) {
+          onNodeClickRef.current(d);
         }
 
         const selectedNodes = nodes.filter(n => newIds.includes(n.id));
-        if (onSelectionChange) {
-          onSelectionChange(selectedNodes);
+        if (onSelectionChangeRef.current) {
+          onSelectionChangeRef.current(selectedNodes);
         }
 
         // Smoothly bring node into focus
@@ -1550,39 +1977,41 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
     svg.on("click", (event) => {
       if (event.target === svgRef.current || (event.target as HTMLElement).tagName === 'rect') {
         setPinnedNodeIds([]);
-        if (onSelectionChange) {
-          onSelectionChange([]);
+        if (onSelectionChangeRef.current) {
+          onSelectionChangeRef.current([]);
         }
       }
     });
 
-    let tickCount = 0;
-    simulation.on("tick", () => {
-      link
-        .attr("x1", (d: any) => (d.source as D3Node).x!)
-        .attr("y1", (d: any) => (d.source as D3Node).y!)
-        .attr("x2", (d: any) => (d.target as D3Node).x!)
-        .attr("y2", (d: any) => (d.target as D3Node).y!);
+    if (layoutAlgorithm === 'hierarchical') {
+      let tickCount = 0;
+      simulation.on("tick", () => {
+        link
+          .attr("x1", (d: any) => (d.source as D3Node).x!)
+          .attr("y1", (d: any) => (d.source as D3Node).y!)
+          .attr("x2", (d: any) => (d.target as D3Node).x!)
+          .attr("y2", (d: any) => (d.target as D3Node).y!);
 
-      nodeGroup.attr("transform", (d: D3Node) => `translate(${d.x},${d.y})`);
+        nodeGroup.attr("transform", (d: D3Node) => `translate(${d.x},${d.y})`);
 
-      if (layoutAlgorithm === 'modular-force' || isFocusMode) {
-        updateModuleHulls();
-      }
+        if (isFocusMode) {
+          updateModuleHulls();
+        }
 
-      tickCount++;
-      // Sync radar node positions occasionally
-      if (tickCount % 10 === 0) {
+        tickCount++;
+        // Sync radar node positions occasionally
+        if (tickCount % 10 === 0) {
+          setLiveNodes([...nodes]);
+        }
+      });
+
+      simulation.on("end", () => {
         setLiveNodes([...nodes]);
-      }
-    });
-
-    simulation.on("end", () => {
-      setLiveNodes([...nodes]);
-      if (layoutAlgorithm === 'modular-force' || isFocusMode) {
-        updateModuleHulls();
-      }
-    });
+        if (isFocusMode) {
+          updateModuleHulls();
+        }
+      });
+    }
 
     const resizeObserver = new ResizeObserver(() => {
       if (containerRef.current) {
@@ -1590,7 +2019,9 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
         const newHeight = containerRef.current.clientHeight || 500;
         setContainerDimensions({ width: newWidth, height: newHeight });
         simulation.force("center", d3.forceCenter(newWidth / 2, newHeight / 2));
-        simulation.alpha(0.2).restart();
+        if (layoutAlgorithm === 'hierarchical') {
+          simulation.alpha(0.2).restart();
+        }
       }
     });
 
@@ -1598,10 +2029,13 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
 
     return () => {
       simulation.stop();
+      if (activeWorkerRef.current) {
+        activeWorkerRef.current.terminate();
+      }
       resizeObserver.disconnect();
       svg.on(".zoom", null);
     };
-  }, [data, onNodeClick, fitToContent]);
+  }, [data, fitToContent]);
 
   // Keyboard navigation shortcuts
   useEffect(() => {
@@ -1851,7 +2285,7 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
                 <button
                   onClick={() => {
                     setPinnedNodeIds([]);
-                    if (onSelectionChange) onSelectionChange([]);
+                    if (onSelectionChangeRef.current) onSelectionChangeRef.current([]);
                   }}
                   className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
                   title="Clear Pinned Selection Group"
@@ -1934,7 +2368,7 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
                         key={node.id}
                         onClick={() => {
                           setPinnedNodeIds([node.id]);
-                          if (onSelectionChange) onSelectionChange([node]);
+                          if (onSelectionChangeRef.current) onSelectionChangeRef.current([node]);
                           focusNode(node.id);
                         }}
                         className={`px-1.5 py-0.5 rounded text-[10px] truncate max-w-[115px] transition-colors text-left font-semibold border ${
@@ -1977,7 +2411,7 @@ const D3FlowChart = forwardRef<D3FlowChartRef, D3FlowChartProps>(({
                         key={node.id}
                         onClick={() => {
                           setPinnedNodeIds([node.id]);
-                          if (onSelectionChange) onSelectionChange([node]);
+                          if (onSelectionChangeRef.current) onSelectionChangeRef.current([node]);
                           focusNode(node.id);
                         }}
                         className={`px-1.5 py-0.5 rounded text-[10px] truncate max-w-[115px] transition-colors text-left font-semibold border ${

@@ -24,9 +24,11 @@ import {
   Eye,
   Settings,
   Flame,
-  HelpCircle
+  HelpCircle,
+  Lock
 } from 'lucide-react';
 import { CodebaseCatalogItem } from '../../types';
+import { ApprovalGate, GateMutationPayload } from './ApprovalGate';
 
 interface AutoFixAgentProps {
   codebase: CodebaseCatalogItem;
@@ -164,6 +166,12 @@ export const AutoFixAgent: React.FC<AutoFixAgentProps> = ({ codebase }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
+  // Approval Gate UI Wrapper State
+  const [approvalGateEnabled, setApprovalGateEnabled] = useState<boolean>(true);
+  const [pendingMutation, setPendingMutation] = useState<GateMutationPayload | null>(null);
+  const [pendingErrorId, setPendingErrorId] = useState<string | null>(null);
+  const [isApprovalGateOpen, setIsApprovalGateOpen] = useState<boolean>(false);
+
   // Load state from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem(`link2ink_autofix_${codebase.id}`);
@@ -206,6 +214,39 @@ export const AutoFixAgent: React.FC<AutoFixAgentProps> = ({ codebase }) => {
   };
 
   const handleAutoFix = (id: string) => {
+    const targetError = errors.find(e => e.id === id);
+    if (!targetError) return;
+
+    if (approvalGateEnabled) {
+      // Intercept mutation with Approval Gate Modal
+      setPendingErrorId(id);
+      setPendingMutation({
+        id: targetError.id,
+        source: 'autofix',
+        title: targetError.title,
+        location: targetError.location,
+        targetFiles: [targetError.location.split(':')[0]],
+        category: targetError.category,
+        severity: targetError.severity,
+        riskLevel: targetError.severity === 'high' ? 'HIGH' : targetError.severity === 'medium' ? 'MEDIUM' : 'LOW',
+        beforeCode: targetError.beforeCode,
+        afterCode: targetError.afterCode,
+        explanation: targetError.explanation,
+        invariants: {
+          antiSlopPassed: true,
+          typeSafetyPassed: true,
+          securityPassed: true
+        }
+      });
+      setIsApprovalGateOpen(true);
+      return;
+    }
+
+    // Direct fix execution if gate is bypassed
+    executeDirectFix(id, targetError.afterCode);
+  };
+
+  const executeDirectFix = (id: string, customCode?: string) => {
     setFixingId(id);
     
     // Update local state to fixing
@@ -216,14 +257,83 @@ export const AutoFixAgent: React.FC<AutoFixAgentProps> = ({ codebase }) => {
     setTimeout(() => {
       const step2 = errors.map(err => {
         if (err.id === id) {
-          return { ...err, status: 'healed' as const };
+          return { 
+            ...err, 
+            afterCode: customCode || err.afterCode,
+            status: 'healed' as const 
+          };
         }
         return err;
       });
       saveState(step2);
       setFixingId(null);
       setViewingDiffId(id); // automatically show the pristine repaired diff
-    }, 2000);
+    }, 1200);
+  };
+
+  const handleApplyCustomPatchWithGate = () => {
+    if (!customDiagnosis) return;
+
+    if (approvalGateEnabled) {
+      setPendingErrorId(null);
+      setPendingMutation({
+        id: `custom-patch-${Date.now()}`,
+        source: 'custom_patch',
+        title: customDiagnosis.errorTitle,
+        location: `${codebase.repoName}/src/patched_module.ts`,
+        targetFiles: [`${codebase.repoName}/src/patched_module.ts`],
+        category: 'architecture',
+        severity: 'medium',
+        riskLevel: 'MEDIUM',
+        beforeCode: customDiagnosis.beforeSegment,
+        afterCode: customDiagnosis.afterSegment,
+        explanation: customDiagnosis.description,
+        invariants: {
+          antiSlopPassed: true,
+          typeSafetyPassed: true,
+          securityPassed: true
+        }
+      });
+      setIsApprovalGateOpen(true);
+      return;
+    }
+
+    handleApproveMutation(customDiagnosis.afterSegment);
+  };
+
+  const handleApproveMutation = (customAfterCode?: string) => {
+    if (pendingMutation) {
+      if (pendingMutation.source === 'autofix' && pendingErrorId) {
+        executeDirectFix(pendingErrorId, customAfterCode);
+      } else if (pendingMutation.source === 'custom_patch' && customDiagnosis) {
+        const newError: DevError = {
+          id: `custom-healed-${Date.now()}`,
+          code: 'CUSTOM_LOG_FIX',
+          title: customDiagnosis.errorTitle,
+          location: `${codebase.repoName}/src/patched_module.ts`,
+          severity: 'medium',
+          stackTrace: customLog,
+          beforeCode: customDiagnosis.beforeSegment,
+          afterCode: customAfterCode || customDiagnosis.afterSegment,
+          explanation: customDiagnosis.description,
+          category: 'architecture',
+          status: 'healed'
+        };
+        const updated = [newError, ...errors];
+        saveState(updated);
+        setViewingDiffId(newError.id);
+      }
+    }
+
+    setIsApprovalGateOpen(false);
+    setPendingMutation(null);
+    setPendingErrorId(null);
+  };
+
+  const handleRejectMutation = () => {
+    setIsApprovalGateOpen(false);
+    setPendingMutation(null);
+    setPendingErrorId(null);
   };
 
   const handleDiagnoseCustom = () => {
@@ -313,6 +423,21 @@ export const AutoFixAgent: React.FC<AutoFixAgentProps> = ({ codebase }) => {
 
         {/* Action button panel */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Approval Gate Toggle Control */}
+          <button
+            type="button"
+            onClick={() => setApprovalGateEnabled(!approvalGateEnabled)}
+            className={`px-3 py-2 rounded-xl border text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
+              approvalGateEnabled
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-sm'
+                : 'bg-slate-900 text-slate-400 border-white/10 hover:text-slate-200'
+            }`}
+            title="Force manual preview and confirmation step before file mutations are pushed"
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span>Gate: {approvalGateEnabled ? 'STRICT (ON)' : 'BYPASS'}</span>
+          </button>
+
           <button
             onClick={handleScan}
             disabled={isScanning}
@@ -647,6 +772,16 @@ export const AutoFixAgent: React.FC<AutoFixAgentProps> = ({ codebase }) => {
                     {customDiagnosis.afterSegment}
                   </pre>
                 </div>
+
+                {/* Apply Patch Button */}
+                <button
+                  type="button"
+                  onClick={handleApplyCustomPatchWithGate}
+                  className="w-full py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:brightness-110 text-slate-950 font-mono text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
+                >
+                  <ShieldAlert className="w-4 h-4" />
+                  <span>Apply Patch via Approval Gate</span>
+                </button>
               </div>
             </div>
           )}
@@ -668,6 +803,15 @@ export const AutoFixAgent: React.FC<AutoFixAgentProps> = ({ codebase }) => {
           </div>
         </div>
       </div>
+
+      {/* REUSABLE APPROVAL GATE COMPONENT */}
+      <ApprovalGate
+        gateTitle="AutoFix Agent Pre-Push Mutation Gate"
+        enabled={approvalGateEnabled}
+        pendingMutation={isApprovalGateOpen ? pendingMutation : null}
+        onConfirm={handleApproveMutation}
+        onCancel={handleRejectMutation}
+      />
     </div>
   );
 };

@@ -425,14 +425,21 @@ export async function sendAssistantChatMessage(
   newMessage: string,
   systemInstruction: string,
   model: string = 'gemini-3.7-flash',
-  codebaseContext?: string
-): Promise<string> {
+  codebaseContext?: string,
+  enableSearchGrounding: boolean = false
+): Promise<{ text: string; citations?: Citation[] }> {
   const ai = getAiClient();
 
   // Build full system prompt including codebase context if available
   let fullSystemInstruction = systemInstruction;
   if (codebaseContext) {
     fullSystemInstruction += `\n\n### Current Project / Codebase Context:\n${codebaseContext}\nUse this context when answering questions about the project architecture, modules, or implementation.`;
+  }
+
+  if (enableSearchGrounding) {
+    fullSystemInstruction += `\n\n### Google Search Grounding Mode Enabled:
+You have access to live Google Search grounding. When answering, use Google Search to fetch the LATEST GitHub repository documentation, libraries, frameworks, API specifications, and current 2026 tech-stack trends or architectural best practices.
+Provide highly accurate, grounded architectural advice based on the search results. Keep your recommendations modern, realistic, and highly specific to the retrieved real-world documentation. Always reference and integrate information from search results smoothly.`;
   }
 
   // Format contents for multi-turn history
@@ -453,10 +460,32 @@ export async function sendAssistantChatMessage(
       contents: contents,
       config: {
         systemInstruction: fullSystemInstruction,
+        tools: enableSearchGrounding ? [{ googleSearch: {} }] : undefined,
       }
     });
 
-    return response.text || "I was unable to generate a response. Please try again.";
+    const text = response.text || "I was unable to generate a response. Please try again.";
+
+    let citations: Citation[] = [];
+    if (enableSearchGrounding) {
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      if (chunks) {
+        chunks.forEach((chunk: any) => {
+          if (chunk.web?.uri) {
+            citations.push({
+              uri: chunk.web.uri,
+              title: chunk.web.title || "Search Reference"
+            });
+          }
+        });
+        // Deduplicate citations based on URI
+        const uniqueCitations = new Map();
+        citations.forEach(c => uniqueCitations.set(c.uri, c));
+        citations = Array.from(uniqueCitations.values());
+      }
+    }
+
+    return { text, citations: citations.length > 0 ? citations : undefined };
   } catch (error: any) {
     console.error("Assistant chat failed:", error);
     throw new Error(error?.message || "Failed to communicate with AI Assistant");

@@ -548,9 +548,9 @@ export const Codemap: React.FC<CodemapProps> = ({
   ];
 
   return (
-    <div className="space-y-6 max-w-[1440px] mx-auto animate-in fade-in duration-500 pb-12">
+    <div className="space-y-8 max-w-[1440px] mx-auto animate-in fade-in duration-500 pb-16">
       {/* Top Search & Mission Control Bar */}
-      <div className="glass-panel p-4 md:p-5 rounded-3xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 border border-white/10 shadow-xl">
+      <div className="glass-panel p-4 md:p-6 rounded-3xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 border border-white/10 shadow-xl">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-gradient-to-br from-indigo-500/20 to-sky-500/20 rounded-2xl border border-indigo-500/30 text-indigo-300 shadow-neon-violet">
             <Network className="w-6 h-6" />

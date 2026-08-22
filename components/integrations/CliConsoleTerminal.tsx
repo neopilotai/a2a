@@ -21,6 +21,7 @@ import {
   Zap, 
   Flame, 
   ShieldCheck, 
+  ShieldAlert,
   Layers, 
   Network, 
   FileText, 
@@ -28,6 +29,7 @@ import {
   Maximize2
 } from 'lucide-react';
 import { simulateCliExecution } from '../../services/integrationService';
+import { ApprovalGate, GateMutationPayload } from './ApprovalGate';
 
 interface CliConsoleTerminalProps {
   codebase: CodebaseCatalogItem;
@@ -60,6 +62,12 @@ export const CliConsoleTerminal: React.FC<CliConsoleTerminalProps> = ({
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Approval Gate UI Wrapper State
+  const [approvalGateEnabled, setApprovalGateEnabled] = useState<boolean>(true);
+  const [pendingMutation, setPendingMutation] = useState<GateMutationPayload | null>(null);
+  const [pendingCommand, setPendingCommand] = useState<string | null>(null);
+  const [isApprovalGateOpen, setIsApprovalGateOpen] = useState<boolean>(false);
+
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -76,9 +84,48 @@ export const CliConsoleTerminal: React.FC<CliConsoleTerminalProps> = ({
     }
   }, [codebase.id]);
 
-  const handleRunCommand = (cmdToRun?: string) => {
+  const isMutatingCommand = (cmd: string): boolean => {
+    const lower = cmd.toLowerCase();
+    return (
+      lower.includes('fix') ||
+      lower.includes('patch') ||
+      lower.includes('apply') ||
+      lower.includes('write') ||
+      lower.includes('clean') ||
+      lower.includes('refactor') ||
+      lower.includes('deploy') ||
+      lower.includes('push') ||
+      lower.includes('export') ||
+      lower.includes('--apply') ||
+      lower.includes('--fix')
+    );
+  };
+
+  const handleRunCommand = (cmdToRun?: string, bypassGate = false) => {
     const command = (cmdToRun || currentInput).trim();
     if (!command || isExecuting) return;
+
+    if (approvalGateEnabled && !bypassGate && isMutatingCommand(command)) {
+      // Intercept mutating command execution with Approval Gate
+      const sampleFile = codebase.sampleFileTree?.[0]?.path || 'src/main.ts';
+      setPendingCommand(command);
+      setPendingMutation({
+        id: `cli-${Date.now()}`,
+        source: 'cli',
+        title: `CLI Execution Mutation Request: ${command}`,
+        location: codebase.repoName,
+        targetFiles: [sampleFile],
+        category: 'cli_command',
+        severity: 'medium',
+        riskLevel: 'MEDIUM',
+        beforeCode: `// Target Codebase: ${codebase.repoName}\n// Command: $ ${command}\n// Unconfirmed CLI file mutation stage`,
+        afterCode: `// Approved Patch Executed for $ ${command}\n// Applied mutation patch cleanly to ${sampleFile}\n// Anti-slop and type invariants preserved`,
+        explanation: `Executing '${command}' will modify file system structures or trigger build pipeline mutations. Manual preview verifies anti-slop guidelines and type safety invariants before execution.`,
+        command
+      });
+      setIsApprovalGateOpen(true);
+      return;
+    }
 
     setIsExecuting(true);
     setCurrentInput('');
@@ -91,6 +138,21 @@ export const CliConsoleTerminal: React.FC<CliConsoleTerminalProps> = ({
       setIsExecuting(false);
       inputRef.current?.focus();
     }, 200);
+  };
+
+  const handleApproveCliMutation = () => {
+    if (pendingCommand) {
+      handleRunCommand(pendingCommand, true);
+    }
+    setIsApprovalGateOpen(false);
+    setPendingMutation(null);
+    setPendingCommand(null);
+  };
+
+  const handleRejectCliMutation = () => {
+    setIsApprovalGateOpen(false);
+    setPendingMutation(null);
+    setPendingCommand(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -207,6 +269,21 @@ npx link2ink codemap --open
 
         {/* Right Tools */}
         <div className="flex items-center gap-2">
+          {/* Approval Gate Toggle Control */}
+          <button
+            type="button"
+            onClick={() => setApprovalGateEnabled(!approvalGateEnabled)}
+            className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
+              approvalGateEnabled
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                : 'bg-slate-800 text-slate-400 border-white/10 hover:text-slate-200'
+            }`}
+            title="Force manual confirmation modal for file-mutating CLI commands"
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span>Gate: {approvalGateEnabled ? 'STRICT' : 'BYPASS'}</span>
+          </button>
+
           <button
             type="button"
             onClick={copyAllTerminal}
@@ -379,6 +456,15 @@ npx link2ink codemap --open
           <div ref={terminalEndRef} />
         </div>
       </div>
+
+      {/* REUSABLE APPROVAL GATE COMPONENT */}
+      <ApprovalGate
+        gateTitle="CLI Terminal Execution Approval Gate"
+        enabled={approvalGateEnabled}
+        pendingMutation={isApprovalGateOpen ? pendingMutation : null}
+        onConfirm={handleApproveCliMutation}
+        onCancel={handleRejectCliMutation}
+      />
     </div>
   );
 };

@@ -404,7 +404,7 @@ const RepoAnalyzer: React.FC<RepoAnalyzerProps> = ({
   };
 
   return (
-    <div className="repo-analyzer-container max-w-6xl mx-auto space-y-10 mb-20" id="repo-analyzer-view-container">
+    <div className="repo-analyzer-container max-w-6xl mx-auto space-y-8 pb-16" id="repo-analyzer-view-container">
       
       {/* Fullscreen D3 Inspector Modal */}
       {fullScreenImage && (
