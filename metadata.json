@@ -1,6 +1,6 @@
 {
-  "name": "Remix A2A",
-  "description": "Link 2 Ink is a visual intelligence platform that transforms GitHub repositories into interactive architectural blueprints and converts web articles into concise, professional infographics.",
+  "name": "Remix A2A Studio",
+  "description": "Remix A2A Studio is an Agent-to-Agent (A2A) visual intelligence platform that transforms GitHub repositories into interactive architectural blueprints, visual dependency DAGs, and adaptive A2UI components.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

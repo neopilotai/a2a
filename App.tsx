@@ -135,7 +135,7 @@ export const App: React.FC = () => {
                 setIsWorkspaceDropdownOpen(false);
               }}
               className="flex items-center gap-3 group transition-all hover:opacity-95 shrink-0"
-              title="Link2Ink Studio Dashboard"
+              title="Remix A2A Studio Dashboard"
             >
               <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-cyan-400 p-[1px] shadow-lg shadow-violet-500/20 group-hover:scale-105 transition-transform">
                 <div className="w-full h-full bg-slate-950 rounded-[11px] flex items-center justify-center">
@@ -144,14 +144,14 @@ export const App: React.FC = () => {
               </div>
               <div className="text-left">
                 <div className="flex items-center gap-2 leading-none">
-                  <span className="text-base font-extrabold text-white tracking-tight font-sans">Link2Ink</span>
+                  <span className="text-base font-extrabold text-white tracking-tight font-sans">Remix A2A</span>
                   <span className="px-2 py-0.5 rounded-md bg-violet-500/20 text-[10px] font-mono font-bold text-violet-300 border border-violet-500/30">
-                    STUDIO
+                    A2A STUDIO
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-[10px] font-mono text-slate-400 tracking-wider">AI ARCHITECT</span>
+                  <span className="text-[10px] font-mono text-slate-400 tracking-wider">LINK2INK AI ARCHITECT</span>
                 </div>
               </div>
             </button>

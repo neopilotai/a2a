@@ -25,7 +25,7 @@ const IntroAnimation: React.FC<IntroAnimationProps> = ({ onComplete }) => {
   useEffect(() => {
     const timer1 = setTimeout(() => {
       setPhase('formula');
-      typewriterEffect("ƒ(link) + AI → Ink");
+      typewriterEffect("ƒ(link) + A2A → Ink");
     }, 2500);
 
     const timer2 = setTimeout(() => {
