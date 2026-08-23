@@ -28,6 +28,8 @@ const BACKUP_VERSION = 1;
  * Helper to safely check if localStorage is available
  */
 export const isLocalStorageAvailable = (): boolean => {
+  if (typeof window === 'undefined' || !window.localStorage) return false;
+
   try {
     const testKey = '__link2ink_test__';
     window.localStorage.setItem(testKey, testKey);
