@@ -91,6 +91,8 @@ const THEME_STORAGE_KEY = 'link2ink_studio_theme_v1';
  * Get stored theme from localStorage or default to 'architect'
  */
 export const getStoredTheme = (): StudioTheme => {
+  if (typeof window === 'undefined' || !window.localStorage) return 'architect';
+
   try {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY) as StudioTheme;
     if (stored && (stored === 'architect' || stored === 'blueprint' || stored === 'draft')) {
