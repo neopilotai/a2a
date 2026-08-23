@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import { GoogleGenAI } from "@google/genai";
 import { generateAiVectorInfographic } from "./svgInfographicService";
 import { 
   RepoFileTree, 
@@ -29,17 +28,35 @@ import {
   PrFileDiff
 } from '../types';
 
-// Helper to ensure we always get the freshest key from the environment
-// immediately before a call with recommended telemetry header.
-const getAiClient = () =>
-  new GoogleGenAI({
-    apiKey: process.env.API_KEY || process.env.GEMINI_API_KEY,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
+type GeminiContents = unknown;
+type GeminiConfig = Record<string, unknown>;
+type GeminiRequest = { model: string; contents: GeminiContents; config?: GeminiConfig };
+
+type GeminiResponse = {
+  text?: string;
+  candidates?: Array<{ groundingMetadata?: { groundingChunks?: Array<{ web?: { uri?: string; title?: string } }> }; content?: { parts?: Array<{ text?: string; inlineData?: { data?: string; mimeType?: string } }> } }>;
+};
+
+async function generateContentViaProxy(
+  modelOrRequest: string | GeminiRequest,
+  contents?: GeminiContents,
+  config?: GeminiConfig,
+): Promise<GeminiResponse> {
+  const request = typeof modelOrRequest === 'string'
+    ? { model: modelOrRequest, contents, config }
+    : modelOrRequest;
+  const response = await fetch('/api/gemini', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
   });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || 'Gemini request failed.');
+  }
+  return payload;
+}
 
 export interface InfographicResult {
     imageData: string | null;
@@ -53,7 +70,6 @@ export async function generateInfographic(
   is3D: boolean = false,
   language: string = "English"
 ): Promise<string | null> {
-  const ai = getAiClient();
   try {
     // Summarize architecture for the image prompt
     const limitedTree = fileTree.slice(0, 150).map(f => f.path).join(', ');
@@ -117,7 +133,7 @@ export async function generateInfographic(
   `;
 
     try {
-      const response = await ai.models.generateContent({
+      const response = await generateContentViaProxy({
         model: 'gemini-3.1-flash-image',
         contents: {
           parts: [{ text: prompt }],
@@ -152,7 +168,6 @@ export async function generateInfographic(
 }
 
 export async function askRepoQuestion(question: string, infographicBase64: string, fileTree: RepoFileTree[]): Promise<string> {
-  const ai = getAiClient();
   // Provide context about the file structure to supplement the image
   const limitedTree = fileTree.slice(0, 300).map(f => f.path).join('\n');
   
@@ -169,7 +184,7 @@ export async function askRepoQuestion(question: string, infographicBase64: strin
   Keep answers concise, technical, and helpful.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: {
         parts: [
@@ -196,7 +211,6 @@ export async function askNodeSpecificQuestion(
   question: string, 
   fileTree: RepoFileTree[]
 ): Promise<string> {
-  const ai = getAiClient();
   const limitedTree = fileTree.slice(0, 300).map(f => f.path).join('\n');
   
   const prompt = `You are a senior software architect analyzing a repository.
@@ -212,7 +226,7 @@ export async function askNodeSpecificQuestion(
   Keep the response technical, concise, and helpful for a developer.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: {
         parts: [
@@ -234,8 +248,7 @@ export async function generateArticleInfographic(
   onProgress?: (stage: string) => void,
   language: string = "English"
 ): Promise<InfographicResult> {
-    const ai = getAiClient();
-    try {
+      try {
         // PHASE 1: Content Understanding & Structural Breakdown (The "Planner")
     if (onProgress) onProgress("RESEARCHING & ANALYZING CONTENT...");
     
@@ -258,7 +271,7 @@ export async function generateArticleInfographic(
         Keep the output concise and focused purely on what should be ON the infographic. Ensure all content is in ${language}.`;
 
         // Use 'gemini-3.7-flash' with Google Search tool for live web research
-        const analysisResponse = await ai.models.generateContent({
+        const analysisResponse = await generateContentViaProxy({
             model: 'gemini-3.7-flash',
             contents: analysisPrompt,
             config: {
@@ -332,7 +345,7 @@ export async function generateArticleInfographic(
     let imageData = null;
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await generateContentViaProxy({
             model: 'gemini-3.1-flash-image',
             contents: {
                 parts: [{ text: imagePrompt }],
@@ -377,9 +390,8 @@ export async function generateArticleInfographic(
 }
 
 export async function editImageWithGemini(base64Data: string, mimeType: string, prompt: string): Promise<string | null> {
-  const ai = getAiClient();
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.1-flash-image',
       contents: {
         parts: [
@@ -428,7 +440,6 @@ export async function sendAssistantChatMessage(
   codebaseContext?: string,
   enableSearchGrounding: boolean = false
 ): Promise<{ text: string; citations?: Citation[] }> {
-  const ai = getAiClient();
 
   // Build full system prompt including codebase context if available
   let fullSystemInstruction = systemInstruction;
@@ -455,7 +466,7 @@ Provide highly accurate, grounded architectural advice based on the search resul
   ];
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: model,
       contents: contents,
       config: {
@@ -500,7 +511,6 @@ import { PlanModelRequest, ImplementationPlan } from '../types';
 export async function generateImplementationPlan(
   request: PlanModelRequest
 ): Promise<ImplementationPlan> {
-  const ai = getAiClient();
 
   const fileTreeSummary = request.fileTree && request.fileTree.length > 0
     ? `\nRepository Files (${request.fileTree.length} files detected):\n` + request.fileTree.slice(0, 200).map(f => `- ${f.path}`).join('\n')
@@ -565,7 +575,7 @@ Ensure all milestones are ordered logically (e.g. Phase 1: Audit & Foundation, P
 Return ONLY the raw JSON object. Do not wrap in markdown quotes if possible, or use standard json formatting.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -624,7 +634,6 @@ export async function generateCodemapInsights(
   fileTree: RepoFileTree[],
   categoryCounts: Record<string, number>
 ): Promise<{ summary: string; hotspots: string[]; recommendations: string[] }> {
-  const ai = getAiClient();
   const limitedTree = fileTree.slice(0, 200).map(f => f.path).join('\n');
 
   const prompt = `You are a Principal Software Architect analyzing the codebase topology of "${repoName}".
@@ -648,7 +657,7 @@ JSON Format:
 }`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -683,7 +692,6 @@ export async function generateStructuredCodemapAnnotations(
   repoName: string,
   filesToAnnotate: { path: string; category: string; depth: number }[]
 ): Promise<Record<string, ModuleAnnotation>> {
-  const ai = getAiClient();
   const fileListText = filesToAnnotate.slice(0, 45).map(f => `- [${f.category}] ${f.path}`).join('\n');
 
   const prompt = `You are a Principal Software Architect generating AI-annotated structured maps for the repository "${repoName}".
@@ -712,7 +720,7 @@ For each file in the list, return a structured annotation object matching this s
 Ensure all paths in the output match the input paths exactly.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -773,7 +781,6 @@ export async function generateVibeslopDefenseAudit(
   fileTree: RepoFileTree[],
   categoryCounts: Record<string, number>
 ): Promise<VibeslopDefenseAudit> {
-  const ai = getAiClient();
   const limitedTree = fileTree.slice(0, 180).map(f => f.path).join('\n');
 
   const prompt = `You are a Principal Software Architect auditing the codebase "${repoName}" to provide a "Vibeslop Defense Scorecard".
@@ -821,7 +828,7 @@ Produce an Anti-Vibeslop Code Comprehension Audit in JSON with:
 }`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -905,7 +912,6 @@ export async function generateEvolutionAiInsight(
   repoName: string,
   summary: EvolutionDiffSummary
 ): Promise<EvolutionAiInsight> {
-  const ai = getAiClient();
 
   const prompt = `
 You are a Principal Software Architect reviewing the code evolution of repository "${repoName}".
@@ -949,7 +955,7 @@ Return ONLY valid JSON matching this schema without markdown fences or extraneou
 `;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -1016,7 +1022,6 @@ export async function generateRepoReadme(
   fileTree: RepoFileTree[],
   techOverview?: RepoTechStackOverview | null
 ): Promise<ReadmeResult> {
-  const ai = getAiClient();
   const repoName = options.repoName || 'Repository';
   const cleanRepoTitle = repoName.split('/').pop() || repoName;
 
@@ -1091,7 +1096,7 @@ CRITICAL REQUIREMENTS:
 4. Output the complete Markdown document directly without introductory conversational text.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
     });
@@ -1141,7 +1146,6 @@ export async function refineRepoReadme(
   instruction: string,
   repoName: string
 ): Promise<string> {
-  const ai = getAiClient();
   const prompt = `You are a Principal Software Architect and Lead Technical Writer.
 You are refining an existing Markdown README.md for the repository "${repoName}".
 
@@ -1158,7 +1162,7 @@ Apply the user's refinement instruction precisely. Improve the clarity, architec
 Return the entire updated Markdown directly without conversational commentary.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
     });
@@ -1319,7 +1323,6 @@ export async function generateIntelligentRefactoringCatalog(
   activeAnnotations?: Record<string, ModuleAnnotation>,
   focusType?: string
 ): Promise<RefactoringCatalog> {
-  const ai = getAiClient();
   const samplePaths = fileTree.slice(0, 160).map(f => f.path);
   const sampleTree = samplePaths.join('\n');
 
@@ -1395,7 +1398,7 @@ Return a strictly valid JSON object matching this schema:
 Return ONLY valid raw JSON.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -1488,7 +1491,6 @@ export async function generateTargetedFileRefactoring(
   customInstructions?: string,
   fileTree?: RepoFileTree[]
 ): Promise<RefactoringSuggestion> {
-  const ai = getAiClient();
   const fileName = filePath.split('/').pop() || filePath;
 
   const prompt = `You are a Principal Software Architect.
@@ -1531,7 +1533,7 @@ Return a JSON object matching this schema:
 }`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -1721,7 +1723,6 @@ export async function generateA2UISchemaFromPrompt(
   context?: string,
   targetPlatform: string = 'web'
 ): Promise<A2UISchema> {
-  const ai = getAiClient();
 
   const prompt = `You are a Principal AI Agent Architect generating a declarative A2UI (Agent-to-User Interface) Protocol schema.
 The A2UI Protocol enables AI agents to render rich, interactive, native multi-platform interfaces across Web, Mobile (iOS/Android), and Desktop—WITHOUT executing arbitrary code. The client renders natively using pre-registered component primitives.
@@ -1758,7 +1759,7 @@ A2UI PROTOCOL RULES:
 Return ONLY the raw JSON object. Do not include markdown code fence wrappers or backticks.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -1895,7 +1896,6 @@ export async function generateCustomIntegrationCode(
   explanation: string;
   setupInstructions: string[];
 }> {
-  const ai = getAiClient();
 
   const systemInstruction = `You are the Lead Integration Architect at Link2Ink / A2A Studio.
 Your mission is to generate clean, robust, production-ready integration scripts and configurations for CLI, IDEs (VS Code, Cursor, JetBrains, Zed, Neovim), Vibe coding platforms (v0, Bolt, Lovable), or Model Context Protocol (MCP) servers.
@@ -1918,7 +1918,7 @@ Output format: Return a pure JSON object adhering to this structure:
 }`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: userPrompt,
       config: {
@@ -1962,7 +1962,6 @@ export async function generatePrWalkthroughWithAi(
   riskScore: 'Low' | 'Moderate' | 'High';
   blastRadius: string;
 }> {
-  const ai = getAiClient();
   const systemInstruction = `You are a Principal Software Architect conducting an automated Pull Request walkthrough and blast-radius assessment for Change Stack layer PR #${pr.number}: "${pr.title}".
 Analyze the PR diffs, commits, and description.
 Return JSON with this exact shape:
@@ -1983,7 +1982,7 @@ Changed files sample: ${pr.fileDiffs.map(f => f.path).join(', ')}
 Commits: ${pr.commitHistory.map(c => c.message).join(' | ')}`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -2011,7 +2010,6 @@ Commits: ${pr.commitHistory.map(c => c.message).join(' | ')}`;
 export async function generateDocstringsWithAi(
   missingItems: PrDocstringItem[]
 ): Promise<PrDocstringItem[]> {
-  const ai = getAiClient();
   const systemInstruction = `You are an automated code documentation bot.
 Generate production-grade JSDoc / TSDoc docstrings for the provided functions, hooks, classes, and interfaces.
 Include description, @param definitions, @returns definitions, @throws where applicable, and a realistic @example.
@@ -2035,7 +2033,7 @@ Return JSON with this exact shape:
     })), null, 2);
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -2070,7 +2068,6 @@ Return JSON with this exact shape:
 export async function generateCiFixWithAi(
   ciCheck: PrCiCheck
 ): Promise<{ explanation: string; patchCode: string; fileToModify: string }> {
-  const ai = getAiClient();
   const systemInstruction = `You are a CI/CD Diagnostic Sentinel & Automated Code Healing Engine.
 Analyze this failing CI pipeline step error log, pinpoint the root cause, and generate a precise patch to fix the build/test.
 Return JSON:
@@ -2089,7 +2086,7 @@ Failure Log:
 ${ciCheck.failureLog || ciCheck.errorMessage}`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -2117,7 +2114,6 @@ export async function generateUnitTestsWithAi(
   codeSnippet: string,
   framework: string = 'vitest'
 ): Promise<{ testCode: string; testNames: string[]; coverageDelta: number }> {
-  const ai = getAiClient();
   const systemInstruction = `You are an automated Unit Test Generation Agent.
 Generate complete, runnable, production-quality unit tests using ${framework}.
 Cover edge cases, error conditions, boundary validation, and mock dependencies properly.
@@ -2134,7 +2130,7 @@ Code to test:
 ${codeSnippet}`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -2166,7 +2162,6 @@ export async function promptReviewCommentsWithAi(
   promptQuery: string,
   agentPersona: string = 'Multi-Agent Code Review Sentinel'
 ): Promise<{ response: string; agentName: string; keyTakeaways: string[] }> {
-  const ai = getAiClient();
   const systemInstruction = `You are ${agentPersona}, an elite code review AI agent reviewing actionable PR comments.
 The user is prompting you with a question or directive about the posted review comments on this Pull Request.
 Answer thoroughly, technically, and actionably with markdown code snippets and architectural advice.
@@ -2190,7 +2185,7 @@ Snippet:
 ${c.codeSnippet}`).join('\n\n')}`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {
@@ -2227,7 +2222,6 @@ export async function resolveAllReviewCommentsWithAi(
   resolutionSummary: string;
   fixedFileCount: number;
 }> {
-  const ai = getAiClient();
   const unresolved = comments.filter(c => c.status === 'unresolved');
   
   const systemInstruction = `You are an automated GitHub PR Bot that resolves all unresolved review comments.
@@ -2246,7 +2240,7 @@ Return JSON:
 ${unresolved.map(c => `[${c.severity}] on ${c.filePath}:${c.lineNumber}: ${c.body}`).join('\n')}`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateContentViaProxy({
       model: 'gemini-3.7-flash',
       contents: prompt,
       config: {

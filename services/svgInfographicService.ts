@@ -3,14 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { GoogleGenAI } from "@google/genai";
-
-// Initialize AI Client
-const getAiClient = () => {
-  const apiKey = process.env.GEMINI_API_KEY || (typeof window !== 'undefined' ? (window as any).GEMINI_API_KEY : '');
-  return new GoogleGenAI({ apiKey: apiKey || '' });
-};
-
 /**
  * Escapes XML/SVG special characters
  */
@@ -392,8 +384,6 @@ export async function generateAiVectorInfographic(
   language: string,
   customTitle?: string
 ): Promise<string> {
-  const ai = getAiClient();
-
   try {
     const prompt = `You are a world-class Infographic Artist & SVG Designer.
 Create a complete, visually stunning standalone SVG infographic (1200 width by 1600 height) based on this content:
@@ -410,11 +400,13 @@ DESIGN SPECIFICATIONS:
 - Use clean typography (<text> elements with font-family="system-ui, sans-serif").
 - Output ONLY the raw valid <svg> ... </svg> code without markdown formatting or code fences.`;
 
-    const res = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
-      contents: prompt
+    const response = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gemini-3.7-flash', contents: prompt }),
     });
-
+    if (!response.ok) throw new Error('Gemini request failed');
+    const res = await response.json() as { text?: string };
     const text = res.text || '';
     const svgMatch = text.match(/<svg[\s\S]*?<\/svg>/i);
     if (svgMatch) {
