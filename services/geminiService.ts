@@ -4,6 +4,7 @@
 */
 
 import { generateAiVectorInfographic } from "./svgInfographicService";
+import { AI_MODEL_DEFAULTS } from "./aiConfig";
 import { 
   RepoFileTree, 
   Citation, 
@@ -134,7 +135,7 @@ export async function generateInfographic(
 
     try {
       const response = await generateContentViaProxy({
-        model: 'gemini-3.1-flash-image',
+        model: AI_MODEL_DEFAULTS.image,
         contents: {
           parts: [{ text: prompt }],
         },
@@ -185,7 +186,7 @@ export async function askRepoQuestion(question: string, infographicBase64: strin
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: {
         parts: [
           {
@@ -227,7 +228,7 @@ export async function askNodeSpecificQuestion(
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: {
         parts: [
           { text: prompt }
@@ -270,9 +271,9 @@ export async function generateArticleInfographic(
         
         Keep the output concise and focused purely on what should be ON the infographic. Ensure all content is in ${language}.`;
 
-        // Use 'gemini-3.7-flash' with Google Search tool for live web research
+        // Use AI_MODEL_DEFAULTS.reasoning with Google Search tool for live web research
         const analysisResponse = await generateContentViaProxy({
-            model: 'gemini-3.7-flash',
+            model: AI_MODEL_DEFAULTS.reasoning,
             contents: analysisPrompt,
             config: {
                 tools: [{ googleSearch: {} }],
@@ -346,7 +347,7 @@ export async function generateArticleInfographic(
 
     try {
         const response = await generateContentViaProxy({
-            model: 'gemini-3.1-flash-image',
+            model: AI_MODEL_DEFAULTS.image,
             contents: {
                 parts: [{ text: imagePrompt }],
             },
@@ -392,7 +393,7 @@ export async function generateArticleInfographic(
 export async function editImageWithGemini(base64Data: string, mimeType: string, prompt: string): Promise<string | null> {
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.1-flash-image',
+      model: AI_MODEL_DEFAULTS.image,
       contents: {
         parts: [
           {
@@ -436,7 +437,7 @@ export async function sendAssistantChatMessage(
   history: { role: 'user' | 'model'; text: string }[],
   newMessage: string,
   systemInstruction: string,
-  model: string = 'gemini-3.7-flash',
+  model: string = AI_MODEL_DEFAULTS.reasoning,
   codebaseContext?: string,
   enableSearchGrounding: boolean = false
 ): Promise<{ text: string; citations?: Citation[] }> {
@@ -576,7 +577,7 @@ Return ONLY the raw JSON object. Do not wrap in markdown quotes if possible, or 
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -658,7 +659,7 @@ JSON Format:
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -721,7 +722,7 @@ Ensure all paths in the output match the input paths exactly.`;
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -829,7 +830,7 @@ Produce an Anti-Vibeslop Code Comprehension Audit in JSON with:
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -956,7 +957,7 @@ Return ONLY valid JSON matching this schema without markdown fences or extraneou
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -1097,7 +1098,7 @@ CRITICAL REQUIREMENTS:
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
     });
 
@@ -1163,7 +1164,7 @@ Return the entire updated Markdown directly without conversational commentary.`;
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
     });
     return response.text || currentMarkdown;
@@ -1399,7 +1400,7 @@ Return ONLY valid raw JSON.`;
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -1534,7 +1535,7 @@ Return a JSON object matching this schema:
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -1760,7 +1761,7 @@ Return ONLY the raw JSON object. Do not include markdown code fence wrappers or 
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -1784,7 +1785,7 @@ Return ONLY the raw JSON object. Do not include markdown code fence wrappers or 
       agentMetadata: {
         agentName: parsed.agentMetadata?.agentName || 'A2UI Synthesis Agent',
         agentRole: parsed.agentMetadata?.agentRole || 'Generative Interface Specialist',
-        model: 'gemini-3.7-flash',
+        model: AI_MODEL_DEFAULTS.reasoning,
         confidence: parsed.agentMetadata?.confidence || 0.98,
         executionTimeMs: parsed.agentMetadata?.executionTimeMs || 320,
         timestamp: Date.now(),
@@ -1805,7 +1806,7 @@ Return ONLY the raw JSON object. Do not include markdown code fence wrappers or 
       agentMetadata: {
         agentName: 'A2UI Native Agent',
         agentRole: 'Interface Synthesizer',
-        model: 'gemini-3.7-flash',
+        model: AI_MODEL_DEFAULTS.reasoning,
         confidence: 0.95,
         executionTimeMs: 280,
         timestamp: Date.now(),
@@ -1919,7 +1920,7 @@ Output format: Return a pure JSON object adhering to this structure:
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: userPrompt,
       config: {
         systemInstruction,
@@ -1983,7 +1984,7 @@ Commits: ${pr.commitHistory.map(c => c.message).join(' | ')}`;
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         systemInstruction,
@@ -2034,7 +2035,7 @@ Return JSON with this exact shape:
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         systemInstruction,
@@ -2087,7 +2088,7 @@ ${ciCheck.failureLog || ciCheck.errorMessage}`;
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         systemInstruction,
@@ -2131,7 +2132,7 @@ ${codeSnippet}`;
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         systemInstruction,
@@ -2186,7 +2187,7 @@ ${c.codeSnippet}`).join('\n\n')}`;
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         systemInstruction,
@@ -2241,7 +2242,7 @@ ${unresolved.map(c => `[${c.severity}] on ${c.filePath}:${c.lineNumber}: ${c.bod
 
   try {
     const response = await generateContentViaProxy({
-      model: 'gemini-3.7-flash',
+      model: AI_MODEL_DEFAULTS.reasoning,
       contents: prompt,
       config: {
         systemInstruction,

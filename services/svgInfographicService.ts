@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { AI_MODEL_DEFAULTS } from './aiConfig';
+
 /**
  * Escapes XML/SVG special characters
  */
@@ -403,7 +405,7 @@ DESIGN SPECIFICATIONS:
     const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gemini-3.7-flash', contents: prompt }),
+      body: JSON.stringify({ path: 'infographic', model: AI_MODEL_DEFAULTS.infographic, contents: prompt }),
     });
     if (!response.ok) throw new Error('Gemini request failed');
     const res = await response.json() as { text?: string };
